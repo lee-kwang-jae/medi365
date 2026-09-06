@@ -10,7 +10,8 @@
  *   - 카카오가 주는 지역명과 E-Gen 표기를 맞출 필요가 없다
  *   - 앱은 검색 좌표 주변 격자만 읽으면 된다 (반경 3km 면 1~4개)
  *
- * 실행: node scripts/fetch-data.mjs [--sido 경기도] [--kind pharmacy]
+ * 실행: node scripts/fetch-data.mjs                       (전국, 통째로 재생성)
+ *       node scripts/fetch-data.mjs --sido 경기도 --sigungu 하남시   (부분, 병합)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -156,9 +157,9 @@ async function collectSidoOnce(kind, sido, extra = {}) {
  * 병의원 목록 응답에는 진료과목 필드가 없어 클라이언트가 거를 수 없다.
  * 서버 필터(QD)로만 알 수 있으므로 여기서 미리 받아 hpid 목록으로 저장한다.
  */
-async function collectPediatric(sidoList) {
+async function collectPediatric(sidoList, extra = {}) {
   const tasks = sidoList.map((sido) => async () => {
-    const r = await collectSido('hospital', sido, { QD: 'D002' });
+    const r = await collectSido('hospital', sido, { ...extra, QD: 'D002' });
     process.stdout.write(`  ${sido} ${r.items.length}\n`);
     return r.items.map((row) => row[0]).filter(Boolean);
   });
@@ -196,6 +197,39 @@ function toBuckets(rows) {
   return buckets;
 }
 
+const readJson = (file, fallback) =>
+  fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : fallback;
+
+/**
+ * 격자 파일 기록.
+ *  - 전국 수집: 통째로 새로 쓴다
+ *  - 부분 수집(--sido / --sigungu): 기존 파일에 hpid 기준으로 덮어쓴다(upsert).
+ *    도시 하나씩 정상화하는 용도라 다른 지역 데이터를 건드리면 안 된다.
+ */
+function writeBuckets(kind, rows, partial) {
+  const dir = path.join(OUT_DIR, kind);
+  if (!partial) fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+
+  for (const [key, list] of toBuckets(rows)) {
+    const file = path.join(dir, `${key}.json`);
+    let merged = list;
+    if (partial) {
+      const byId = new Map(readJson(file, []).map((r) => [r[0], r]));
+      list.forEach((r) => byId.set(r[0], r));
+      merged = [...byId.values()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    }
+    fs.writeFileSync(file, JSON.stringify(merged));
+  }
+
+  // 실제로 데이터가 있는 격자 목록. 앱은 이 목록에 없는 격자를 만나면 API 로 폴백한다.
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => f.replace(/\.json$/, ''))
+    .sort();
+}
+
 async function run() {
   const args = process.argv.slice(2);
   const pick = (flag) => {
@@ -203,71 +237,73 @@ async function run() {
     return i >= 0 ? args[i + 1] : null;
   };
   const onlySido = pick('--sido');
+  const onlySigungu = pick('--sigungu');
   const onlyKind = pick('--kind');
+  const partial = Boolean(onlySido || onlySigungu);
+
+  if (onlySigungu && !onlySido) {
+    throw new Error('--sigungu 는 --sido 와 함께 써야 합니다');
+  }
 
   const sidoList = onlySido ? [onlySido] : SIDO;
   const kinds = onlyKind ? [onlyKind] : ['pharmacy', 'hospital'];
+  const extra = onlySigungu ? { Q1: onlySigungu } : {};
 
-  const summary = { generatedAt: new Date().toISOString(), grid: GRID, kinds: {} };
-  const collected = {}; // 전부 모은 뒤에 한 번에 쓴다
+  const label = onlySigungu ? `${onlySido} ${onlySigungu}` : onlySido || '전국';
+  console.log(`대상: ${label} · ${kinds.join(', ')} · ${partial ? '부분(병합)' : '전체(재생성)'}`);
+
+  const collected = {};
 
   /*
-   * 상류가 수집 도중 죽는 일이 잦다. 한 시도라도 실패하면 아무것도 쓰지 않고 끝낸다.
+   * 상류가 수집 도중 죽는 일이 잦다. 하나라도 실패하면 아무것도 쓰지 않고 끝낸다.
    * 그래야 이미 배포된 데이터가 반쪽짜리로 덮이지 않는다.
-   * 하루 한 번 도는 작업이므로 하루 거르는 편이 훼손보다 낫다.
    */
   for (const kind of kinds) {
     const started = Date.now();
-    console.log(`\n[${kind}] ${sidoList.length}개 시도 수집`);
-
+    console.log(`\n[${kind}] 수집`);
     const tasks = sidoList.map((sido) => async () => {
-      const r = await collectSido(kind, sido);
-      process.stdout.write(`  ${sido} ${r.items.length}/${r.totalCount}\n`);
+      const r = await collectSido(kind, sido, extra);
+      process.stdout.write(`  ${sido}${onlySigungu ? ' ' + onlySigungu : ''} ${r.items.length}/${r.totalCount}\n`);
       return r.items;
     });
-
-    const all = (await pool(tasks, CONCURRENCY)).flat();
-    collected[kind] = all;
-    summary.kinds[kind] = { count: all.length };
-    console.log(`[${kind}] ${all.length}건 · ${((Date.now() - started) / 1000).toFixed(0)}초`);
+    collected[kind] = (await pool(tasks, CONCURRENCY)).flat();
+    console.log(`[${kind}] ${collected[kind].length}건 · ${((Date.now() - started) / 1000).toFixed(0)}초`);
   }
 
   let pediatricIds = null;
   if (kinds.includes('hospital')) {
     console.log('\n[pediatric] 소아청소년과(D002) 등록 기관 수집');
-    pediatricIds = await collectPediatric(sidoList);
-    summary.pediatric = pediatricIds.length;
+    pediatricIds = await collectPediatric(sidoList, extra);
     console.log(`[pediatric] ${pediatricIds.length}건`);
   }
 
-  // ── 여기까지 왔으면 전부 성공. 이제 한 번에 기록한다 ──
-  for (const [kind, rows] of Object.entries(collected)) {
-    const buckets = toBuckets(rows);
-    const dir = path.join(OUT_DIR, kind);
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.mkdirSync(dir, { recursive: true });
+  // ── 여기까지 왔으면 전부 성공. 이제 기록한다 ──
+  const indexFile = path.join(OUT_DIR, 'index.json');
+  const summary = readJson(indexFile, { grid: GRID, kinds: {}, cells: {} });
+  summary.generatedAt = new Date().toISOString();
+  summary.grid = GRID;
+  summary.cells = summary.cells || {};
+  summary.kinds = summary.kinds || {};
 
-    let bytes = 0;
-    for (const [key, list] of [...buckets].sort((a, b) => a[0].localeCompare(b[0]))) {
-      const json = JSON.stringify(list);
-      fs.writeFileSync(path.join(dir, `${key}.json`), json);
-      bytes += json.length;
-    }
-    summary.kinds[kind].cells = buckets.size;
-    summary.kinds[kind].bytes = bytes;
-    console.log(
-      `[${kind}] 격자 ${buckets.size}개 · ${(bytes / 1024 / 1024).toFixed(1)}MB 기록`,
-    );
+  for (const [kind, rows] of Object.entries(collected)) {
+    const cells = writeBuckets(kind, rows, partial);
+    summary.cells[kind] = cells;
+    summary.kinds[kind] = { cells: cells.length, lastAdded: rows.length, region: label };
+    console.log(`[${kind}] 격자 ${cells.length}개`);
   }
 
   if (pediatricIds) {
     const tagDir = path.join(OUT_DIR, 'tags');
     fs.mkdirSync(tagDir, { recursive: true });
-    fs.writeFileSync(path.join(tagDir, 'pediatric.json'), JSON.stringify(pediatricIds));
+    const file = path.join(tagDir, 'pediatric.json');
+    const prev = partial ? readJson(file, []) : [];
+    const ids = [...new Set([...prev, ...pediatricIds])].sort();
+    fs.writeFileSync(file, JSON.stringify(ids));
+    summary.pediatric = ids.length;
   }
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.writeFileSync(path.join(OUT_DIR, 'index.json'), JSON.stringify(summary, null, 2));
+  fs.writeFileSync(indexFile, JSON.stringify(summary, null, 2));
   console.log('\n완료:', path.relative(ROOT, OUT_DIR));
 }
 

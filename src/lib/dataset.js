@@ -108,13 +108,24 @@ async function loadCell(kind, key) {
 
 /**
  * 반경 안의 격자들을 읽어 합친다.
- * @returns {Promise<Array|null>} 데이터셋이 없으면 null
+ *
+ * 도시 단위로 조금씩 넓혀가는 중이라 아직 수집하지 않은 지역이 있다.
+ * 필요한 격자 중 **하나라도 수집 범위 밖이면 null 을 돌려** 호출부가 실시간 API 로
+ * 폴백하게 한다. 그렇지 않으면 미수집 지역이 오류 없이 조용히 0건이 된다.
+ *
+ * @returns {Promise<Array|null>} 데이터셋이 없거나 범위 밖이면 null
  */
 export async function loadFromDataset(kind, center, radiusKm) {
   const index = await loadIndex();
   if (!index) return null;
 
+  const covered = index.cells?.[kind];
+  if (!Array.isArray(covered) || covered.length === 0) return null;
+
   const cells = cellsForRadius(center, radiusKm);
+  const coveredSet = new Set(covered);
+  if (!cells.every((key) => coveredSet.has(key))) return null;
+
   const chunks = await Promise.all(cells.map((key) => loadCell(kind, key)));
 
   const merged = new Map();

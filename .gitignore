@@ -7,3 +7,9 @@ dist
 
 .vercel
 .env*
+scripts/.watch-collect.mjs
+scripts/.retry-collect.mjs
+scripts/.queue-collect.mjs
+scripts/.chain-collect.mjs
+scripts/.queue.json
+scripts/.worker.mjs
