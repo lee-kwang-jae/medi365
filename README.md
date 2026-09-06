@@ -108,6 +108,25 @@ api/
    종료 < 시작이면 심야영업(익일)으로 처리하고, 전날 심야영업이 새벽까지 이어지는 경우도 포함한다.
 5. **반경 필터 & 정렬** — Haversine으로 중심 좌표와의 거리를 구해 `SEARCH_RADIUS_KM` 이내만 남기고 가까운 순 정렬.
 
+## 서체
+
+본문 서체는 **나눔스퀘어 네오(NanumSquare Neo)** 이며 네이버 「한글한글 아름답게」 CDN 에서
+직접 `@font-face` 로 불러온다 (`src/index.css`).
+
+네이버가 배포하는 공식 CSS(`nanum-square-neo.css`)를 쓰지 않은 이유는 굵기마다
+패밀리 이름이 달라(`NanumSquareNeoBold` 등) Tailwind 의 `font-bold` 같은 굵기
+유틸리티가 먹지 않기 때문이다. 같은 CDN 의 `NanumSquareNeoVariable` 은
+`font-weight` 범위 선언이 없어 굵기 보간도 되지 않는다.
+
+공식 CSS 는 `woff` 만 참조하지만 같은 경로에 `woff2` 가 있어 용량이 절반 이하다
+(690KB → 378KB). 한 벌로 400~900 을 덮도록 굵기 범위를 넓게 잡아 3개 파일만 받는다.
+
+| 파일 | 커버 굵기 | 크기(woff2) |
+| --- | --- | --- |
+| `NanumSquareNeoTTF-bRg` | 400·500 | 378KB |
+| `NanumSquareNeoTTF-cBd` | 600·700 | 376KB |
+| `NanumSquareNeoTTF-dEb` | 800·900 | 379KB |
+
 ## 동작 메모
 
 - **`💊 약국` 탭**은 약국만, **`🏥 병의원` 탭**은 E-Gen의 병·의원 데이터를 모두 보여주고

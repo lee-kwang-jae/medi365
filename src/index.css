@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * 나눔스퀘어 네오 (NanumSquare Neo) — 네이버 한글한글 아름답게 CDN
+ * ------------------------------------------------------------------
+ * 네이버가 배포하는 공식 CSS(nanum-square-neo.css)는 굵기마다 패밀리 이름이
+ * 달라서(NanumSquareNeoBold 등) Tailwind 의 font-bold 같은 굵기 유틸리티가
+ * 먹지 않는다. 그래서 같은 CDN 의 폰트 파일을 직접 @font-face 로 묶는다.
+ *
+ * 공식 CSS 는 woff 만 참조하지만 같은 경로에 woff2 가 있어 용량이 절반 이하다
+ * (690KB → 378KB). woff 를 폴백으로 함께 지정한다.
+ *
+ * 한 벌(bRg/cBd/dEb)로 400~900 을 모두 덮도록 굵기 범위를 넓게 잡았다.
+ *   400·500 → Regular / 600·700 → Bold / 800·900 → ExtraBold
+ */
+@font-face {
+  font-family: 'NanumSquare Neo';
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+  src:
+    url('https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-bRg.woff2')
+      format('woff2'),
+    url('https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-bRg.woff')
+      format('woff');
+}
+@font-face {
+  font-family: 'NanumSquare Neo';
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+  src:
+    url('https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-cBd.woff2')
+      format('woff2'),
+    url('https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-cBd.woff')
+      format('woff');
+}
+@font-face {
+  font-family: 'NanumSquare Neo';
+  font-weight: 800 900;
+  font-style: normal;
+  font-display: swap;
+  src:
+    url('https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-dEb.woff2')
+      format('woff2'),
+    url('https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-dEb.woff')
+      format('woff');
+}
+
 @layer base {
   html,
   body,
@@ -10,7 +57,7 @@
   }
   body {
     @apply bg-slate-100 text-slate-900 antialiased;
-    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    font-family: 'NanumSquare Neo', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
       'Malgun Gothic', system-ui, sans-serif;
     word-break: keep-all;
   }
