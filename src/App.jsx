@@ -31,6 +31,7 @@ export default function App() {
   const [includeUnknown, setIncludeUnknown] = useState(false);
   const [clock, setClock] = useState(() => new Date());
 
+  const listRef = useRef(null);
   const reqRef = useRef(0);
   const geoTriedRef = useRef(false);
 
@@ -118,6 +119,11 @@ export default function App() {
     }
   }, [locate]);
 
+  /** 지도 위 버튼에서 목록으로 이동 (모바일은 목록이 지도 아래에 있다) */
+  const scrollToList = useCallback(() => {
+    listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   /** 목록 카드·지도 마커 공통 진입점. 장소를 선택하고 상세 시트를 연다. */
   const handleSelect = useCallback((id) => {
     setSelectedId(id);
@@ -177,7 +183,7 @@ export default function App() {
         {/* 지도 */}
         <section
           aria-label="지도"
-          className="order-1 h-[42vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card
+          className="relative order-1 h-[42vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card
                      [@supports(height:1dvh)]:h-[42dvh]
                      lg:order-2 lg:sticky lg:top-[124px] lg:h-[calc(100vh-140px)] lg:[@supports(height:1dvh)]:h-[calc(100dvh-140px)]"
         >
@@ -196,10 +202,37 @@ export default function App() {
               지도를 불러오는 중…
             </div>
           )}
+
+          {/*
+            목록으로 이동. 모바일은 지도 아래에 목록이 이어지므로 스크롤이 필요하다.
+            데스크톱(lg)은 목록이 항상 옆에 보여서 숨긴다.
+          */}
+          <button
+            type="button"
+            onClick={scrollToList}
+            aria-label="목록으로 이동"
+            title="목록으로"
+            className="absolute bottom-3 left-1/2 z-10 flex h-11 w-11 -translate-x-1/2 items-center
+                       justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-black/10
+                       transition active:scale-95 hover:bg-slate-50 lg:hidden"
+          >
+            <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden="true" fill="currentColor">
+              <circle cx="3.2" cy="5" r="1.3" />
+              <circle cx="3.2" cy="10" r="1.3" />
+              <circle cx="3.2" cy="15" r="1.3" />
+              <rect x="6.6" y="4.1" width="10.4" height="1.8" rx="0.9" />
+              <rect x="6.6" y="9.1" width="10.4" height="1.8" rx="0.9" />
+              <rect x="6.6" y="14.1" width="10.4" height="1.8" rx="0.9" />
+            </svg>
+          </button>
         </section>
 
         {/* 리스트 */}
-        <section aria-label="검색 결과" className="order-2 flex min-w-0 flex-col gap-2.5 lg:order-1">
+        <section
+          ref={listRef}
+          aria-label="검색 결과"
+          className="order-2 flex min-w-0 flex-col gap-2.5 lg:order-1"
+        >
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-card">
             <p className="truncate text-sm font-bold text-slate-800">
               <span aria-hidden="true">📍</span> {centerLabel}

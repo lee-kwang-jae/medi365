@@ -1,7 +1,5 @@
 import { useState } from 'react';
 
-const EXAMPLES = ['서울시 강남구 역삼동', '성남시 분당구 정자동', '부산시 해운대구 우동'];
-
 export default function SearchBar({ onSearch, onLocate, loading, locating }) {
   const [query, setQuery] = useState('');
 
@@ -51,26 +49,6 @@ export default function SearchBar({ onSearch, onLocate, loading, locating }) {
           <span className="hidden sm:inline">내 위치</span>
         </button>
       </form>
-
-      <div
-        className="no-scrollbar mt-2 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap
-                   pb-0.5 text-xs text-slate-500 sm:flex-wrap sm:overflow-visible"
-      >
-        <span className="shrink-0">예시</span>
-        {EXAMPLES.map((ex) => (
-          <button
-            key={ex}
-            type="button"
-            onClick={() => {
-              setQuery(ex);
-              onSearch(ex);
-            }}
-            className="shrink-0 rounded-full bg-white px-2 py-1 font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
