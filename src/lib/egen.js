@@ -6,7 +6,7 @@
  *
  *  apis.data.go.kr 은 CORS 를 허용하지 않으므로 항상 프록시를 경유한다.
  *    개발  : vite.config.js 의 server.proxy ('/egen' → apis.data.go.kr)
- *    배포  : Cloudflare Worker (worker/egen-proxy.js), VITE_EGEN_PROXY_BASE 로 지정
+ *    배포  : api/egen.js + vercel.json rewrite (같은 '/egen' 경로)
  *
  *  인증키는 프록시가 서버에서 주입한다. 클라이언트는 키를 알지도, 보내지도 않는다.
  */
@@ -14,10 +14,6 @@
 const PROXY_BASE = import.meta.env.VITE_EGEN_PROXY_BASE || '/egen';
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 5;
-
-/** 상대 경로 프록시는 Vite dev 서버에서만 동작한다 */
-const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
-const PROXY_MISCONFIGURED = !PROXY_BASE.startsWith('http') && !isLocal;
 
 export const ENDPOINTS = {
   pharmacy: `${PROXY_BASE}/B552657/ErmctInsttInfoInqireService/getParmacyListInfoInqire`,
@@ -61,14 +57,6 @@ function parseItem(node, kind) {
 }
 
 async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
-  if (PROXY_MISCONFIGURED) {
-    throw new EgenError(
-      '배포 환경에 API 프록시 주소가 설정되지 않았습니다. ' +
-        '빌드 시 VITE_EGEN_PROXY_BASE 에 Cloudflare Worker 주소를 지정해야 합니다.',
-      'NO_PROXY',
-    );
-  }
-
   const params = new URLSearchParams({
     Q0: q0,
     QT: String(dayCode), // 요일(1=월 … 7=일, 8=공휴일)
@@ -79,27 +67,31 @@ async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
   if (q1) params.set('Q1', q1);
 
   const res = await fetch(`${ENDPOINTS[kind]}?${params.toString()}`);
-  if (!res.ok) {
-    throw new EgenError(`응급의료포털 요청 실패 (HTTP ${res.status})`, String(res.status));
-  }
-
   const raw = await res.text();
-  const doc = new DOMParser().parseFromString(raw, 'text/xml');
 
-  if (doc.getElementsByTagName('parsererror').length) {
-    // data.go.kr 는 인증키 오류 시 XML 이 아닌 문서를 돌려주기도 한다
-    throw new EgenError(
-      raw.includes('SERVICE_KEY')
-        ? '인증키가 등록되지 않았거나 잘못되었습니다. (SERVICE KEY IS NOT REGISTERED)'
-        : '응급의료포털 응답을 해석할 수 없습니다.',
-      'PARSE',
-    );
+  // data.go.kr 는 오류도 XML(<cmmMsgHeader>)로 돌려주므로 상태 코드보다 본문이 유용하다
+  const doc = new DOMParser().parseFromString(raw, 'text/xml');
+  const parseFailed = doc.getElementsByTagName('parsererror').length > 0;
+
+  if (!parseFailed) {
+    const code = text(doc, 'resultCode') || text(doc, 'returnReasonCode');
+    const msg = text(doc, 'resultMsg') || text(doc, 'returnAuthMsg') || text(doc, 'errMsg');
+    if (code && code !== '00' && code !== '0000') {
+      const hint = /SERVICE_KEY|SERVICE KEY/i.test(raw)
+        ? ' — EGEN_SERVICE_KEY 에 공공데이터포털 "Decoding" 키가 들어갔는지, 해당 서비스 활용신청이 승인됐는지 확인하세요.'
+        : '';
+      throw new EgenError(`응급의료포털 오류: ${msg || '알 수 없는 오류'} (${code})${hint}`, code);
+    }
   }
 
-  const code = text(doc, 'resultCode') || text(doc, 'returnReasonCode');
-  const msg = text(doc, 'resultMsg') || text(doc, 'returnAuthMsg');
-  if (code && code !== '00' && code !== '0000') {
-    throw new EgenError(`응급의료포털 오류: ${msg || '알 수 없는 오류'} (${code})`, code);
+  if (!res.ok) {
+    // 404 는 대개 프록시(/egen rewrite)가 배포에 반영되지 않은 경우다
+    const hint = res.status === 404 ? ' API 프록시(/egen) 설정을 확인하세요.' : '';
+    throw new EgenError(`응급의료포털 요청 실패 (HTTP ${res.status}).${hint}`, String(res.status));
+  }
+
+  if (parseFailed) {
+    throw new EgenError('응급의료포털 응답을 해석할 수 없습니다.', 'PARSE');
   }
 
   const nodes = Array.from(doc.getElementsByTagName('item'));
