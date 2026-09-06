@@ -79,6 +79,112 @@
   }
 }
 
+/* ── 지도 마커 (CustomOverlay) ────────────────────────────────────────
+ * 상태 A(미선택) : 원형. 지름 D. 원의 중심이 좌표에 위치      (xAnchor .5, yAnchor .5)
+ * 상태 B(선택)   : 핀형. 너비 D / 높이 1.4D.
+ *                 아래 뾰족한 정점이 좌표에 위치              (xAnchor .5, yAnchor 1)
+ *
+ * CustomOverlay 는 생성 후 앵커를 바꿀 수 없다(setYAnchor 같은 API 가 없다).
+ * 앵커를 바꾸려고 오버레이를 재생성하면 트랜지션이 끊긴다.
+ * 그래서 오버레이 콘텐츠는 0x0 박스(.mk-anchor)로 좌표에 고정하고,
+ * 그 안의 마커를 transform 으로 옮긴다. 앵커 변화가 곧 transform 변화가 되어
+ * 크기·위치가 함께 애니메이션된다.
+ *   A: translate(-50%, -50%)   → 중심이 좌표
+ *   B: translate(-50%, -100%)  → 아래 끝이 좌표
+ */
+.mk-anchor {
+  position: relative;
+  width: 0;
+  height: 0;
+}
+
+.mk {
+  --d: 28px; /* 기준 지름 D = 1.0x */
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--d);
+  height: var(--d);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  /* 상태 A 로 돌아올 때: 150~200ms */
+  transition:
+    height 170ms ease-out,
+    transform 170ms ease-out;
+}
+
+.mk__head {
+  position: absolute;
+  inset: 0 0 auto 0;
+  width: var(--d);
+  height: var(--d);
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--mk-color, #1c66f5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+}
+
+.mk__icon {
+  width: calc(var(--d) - 6px);
+  height: calc(var(--d) - 6px);
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--d) * 0.46);
+  line-height: 1;
+}
+
+/* 하단 삼각형. 머리(원) 안쪽에서 시작해 아래로 자란다 */
+.mk__tail {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--d) * 0.62);
+  width: 0;
+  height: 0;
+  border-left: calc(var(--d) * 0.22) solid transparent;
+  border-right: calc(var(--d) * 0.22) solid transparent;
+  border-top: calc(var(--d) * 0.78) solid var(--mk-color, #1c66f5);
+  transform: translateX(-50%) scaleY(0);
+  transform-origin: 50% 0;
+  opacity: 0;
+  transition:
+    transform 170ms ease-out,
+    opacity 110ms ease-out;
+}
+
+/* 상태 B: 높이 1.4x, 앵커를 아래 정점으로. 220ms 탄성(back-out) */
+.mk.is-selected {
+  height: calc(var(--d) * 1.4);
+  transform: translate(-50%, -100%);
+  z-index: 10;
+  transition:
+    height 240ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    transform 240ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.mk.is-selected .mk__tail {
+  transform: translateX(-50%) scaleY(1);
+  opacity: 1;
+  transition:
+    transform 240ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    opacity 110ms ease-out;
+}
+
+/* 움직임 최소화를 원하는 사용자는 즉시 전환 */
+@media (prefers-reduced-motion: reduce) {
+  .mk,
+  .mk__tail,
+  .mk.is-selected,
+  .mk.is-selected .mk__tail {
+    transition-duration: 1ms;
+  }
+}
+
 /* 카카오 기본 인포윈도우 꼬리/테두리 톤 정리 */
 .kakao-iw {
   @apply min-w-[200px] max-w-[260px] p-3 text-[13px] leading-relaxed;

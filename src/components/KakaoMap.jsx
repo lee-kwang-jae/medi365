@@ -17,12 +17,6 @@ const escapeHtml = (value = '') =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
 
-/**
- * 종류별 핀 마커 이미지.
- *   약국   → 흰 알약(캡슐)
- *   병·의원 → 흰 십자(+)
- * 핀 머리 중심은 (15, 14.5) 기준으로 그린다.
- */
 /** 탭 라벨과 같은 아이콘을 지도 마커에도 쓴다 */
 const PIN_EMOJI = {
   pharmacy: '\u{1F48A}', // 💊
@@ -30,19 +24,44 @@ const PIN_EMOJI = {
   pediatric: '\u{1F9D2}', // 🧒
 };
 
-function pinImage(kakao, color, kind) {
-  const emoji = PIN_EMOJI[kind] ?? PIN_EMOJI.hospital;
-  // 색 핀 + 흰 원 + 이모지. 이모지는 보는 사람의 시스템 이모지 폰트로 그려진다.
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="46" viewBox="0 0 34 46">
-    <path d="M17 0C7.6 0 0 7.6 0 17c0 11.9 15 26.8 15.6 27.4a2 2 0 0 0 2.8 0C19 43.8 34 28.9 34 17 34 7.6 26.4 0 17 0z" fill="${color}"/>
-    <circle cx="17" cy="16.5" r="11" fill="#fff"/>
-    <text x="17" y="17" font-size="14" text-anchor="middle" dominant-baseline="central">${emoji}</text>
-  </svg>`;
-  return new kakao.maps.MarkerImage(
-    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-    new kakao.maps.Size(34, 46),
-    { offset: new kakao.maps.Point(17, 45) },
-  );
+/**
+ * 마커 한 개의 DOM 을 만든다.
+ *
+ * 바깥 .mk-anchor 는 0x0 이라 CustomOverlay 의 (xAnchor .5, yAnchor .5) 가
+ * 정확히 좌표를 가리킨다. 실제 마커(.mk)는 그 안에서 transform 으로 움직이므로
+ * 상태 전환(원형 1.0x ↔ 핀형 1.4x, 앵커 중심 ↔ 하단 정점)이 CSS 로 애니메이션된다.
+ * 기하 정의는 src/index.css 의 '지도 마커' 절 참고.
+ */
+function createMarkerElement({ item, kind, color, onToggle }) {
+  const anchor = document.createElement('div');
+  anchor.className = 'mk-anchor';
+
+  const mk = document.createElement('div');
+  mk.className = 'mk';
+  mk.style.setProperty('--mk-color', color);
+  mk.setAttribute('role', 'button');
+  mk.setAttribute('tabindex', '0');
+  mk.setAttribute('aria-label', item.name);
+  mk.title = item.name;
+  mk.innerHTML =
+    '<div class="mk__tail"></div>' +
+    `<div class="mk__head"><span class="mk__icon">${PIN_EMOJI[kind] ?? PIN_EMOJI.hospital}</span></div>`;
+
+  const activate = (e) => {
+    // 지도의 click 핸들러(선택 해제)까지 올라가지 않게 막는다
+    e.stopPropagation();
+    onToggle();
+  };
+  mk.addEventListener('click', activate);
+  mk.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      activate(e);
+    }
+  });
+
+  anchor.appendChild(mk);
+  return { anchor, mk };
 }
 
 function centerContent(label) {
@@ -79,6 +98,9 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
   const pendingBoundsRef = useRef(null);
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
+  // 마커 클릭 핸들러가 최신 선택 상태를 보려면 ref 가 필요하다(재클릭 = 해제)
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
 
   /**
    * 대기 중인 bounds 를 지도에 적용한다.
@@ -107,6 +129,9 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     });
     map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
     mapRef.current = map;
+
+    // 지도 배경 클릭 시 선택 해제 (마커 클릭은 stopPropagation 으로 여기까지 오지 않는다)
+    kakao.maps.event.addListener(map, 'click', () => selectRef.current?.(null));
 
     infoRef.current = new kakao.maps.InfoWindow({ removable: true, zIndex: 20 });
 
@@ -148,7 +173,7 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       // 이 효과가 만든 것은 이 효과가 치운다.
       // 정리하지 않으면 재마운트 때 원·중심 오버레이가 그대로 겹쳐 쌓인다.
       infoRef.current?.close();
-      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current.forEach((m) => m.overlay.setMap(null));
       markersRef.current = new Map();
       circleRef.current?.setMap(null);
       centerOverlayRef.current?.setMap(null);
@@ -179,19 +204,33 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     const { kakao } = window;
 
     infoRef.current?.close();
-    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current.forEach((m) => m.overlay.setMap(null));
     markersRef.current = new Map();
 
-    const image = pinImage(kakao, accent, kind);
     items.forEach((item) => {
-      const marker = new kakao.maps.Marker({
-        map,
-        position: new kakao.maps.LatLng(item.lat, item.lng),
-        title: item.name,
-        image,
+      const position = new kakao.maps.LatLng(item.lat, item.lng);
+
+      const { anchor, mk } = createMarkerElement({
+        item,
+        kind,
+        color: accent,
+        // 같은 마커 재클릭이면 해제, 아니면 그 마커를 선택 (단일 선택)
+        onToggle: () =>
+          selectRef.current?.(selectedRef.current === item.id ? null : item.id),
       });
-      kakao.maps.event.addListener(marker, 'click', () => selectRef.current?.(item.id));
-      markersRef.current.set(item.id, marker);
+
+      const overlay = new kakao.maps.CustomOverlay({
+        map,
+        position,
+        content: anchor,
+        // 콘텐츠가 0x0 이라 이 앵커는 곧 좌표 그 자체다. 상태별 위치는 CSS 가 맡는다.
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+        clickable: true,
+        zIndex: 1,
+      });
+
+      markersRef.current.set(item.id, { overlay, mk, position });
     });
 
     if (items.length) {
@@ -214,21 +253,32 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, accent, kind]);
 
-  /* 선택 항목: panTo + 인포윈도우 */
+  /* 선택 상태: 마커 상태 A↔B 전환 + panTo + 인포윈도우 */
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    // 모든 마커를 상태 A 로 되돌린 뒤, 선택된 것만 상태 B 로
+    markersRef.current.forEach((m, id) => {
+      const on = id === selectedId;
+      m.mk.classList.toggle('is-selected', on);
+      m.mk.setAttribute('aria-pressed', String(on));
+      m.overlay.setZIndex(on ? 10 : 1);
+    });
+
     if (!selectedId) {
       infoRef.current?.close();
       return;
     }
+
     const item = items.find((it) => it.id === selectedId);
     const marker = markersRef.current.get(selectedId);
     if (!item || !marker) return;
 
-    map.panTo(new window.kakao.maps.LatLng(item.lat, item.lng));
+    map.panTo(marker.position);
     infoRef.current.setContent(infoWindowHtml(item));
-    infoRef.current.open(map, marker);
+    infoRef.current.setPosition(marker.position);
+    infoRef.current.open(map);
   }, [selectedId, items]);
 
   return <div ref={boxRef} className="h-full w-full" />;
