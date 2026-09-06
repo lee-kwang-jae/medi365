@@ -11,7 +11,15 @@ function Skeleton() {
   );
 }
 
-export default function PlaceList({ items, loading, error, emptyText, selectedId, onSelect }) {
+export default function PlaceList({
+  items,
+  loading,
+  error,
+  emptyText,
+  selectedId,
+  onSelect,
+  onRetry,
+}) {
   if (loading) {
     return (
       <ul className="space-y-2.5">
@@ -27,6 +35,11 @@ export default function PlaceList({ items, loading, error, emptyText, selectedId
       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
         <p className="font-bold">문제가 발생했습니다</p>
         <p className="mt-1 leading-relaxed">{error}</p>
+        {onRetry && (
+          <button type="button" onClick={onRetry} className="btn-ghost mt-3 h-10 w-full text-sm">
+            ↻ 다시 시도
+          </button>
+        )}
       </div>
     );
   }

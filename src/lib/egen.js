@@ -15,7 +15,10 @@ const PROXY_BASE = import.meta.env.VITE_EGEN_PROXY_BASE || '/egen';
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 5;
 /** 상류(data.go.kr)가 응답하지 않을 때 화면이 영원히 "검색 중" 에 머무는 것을 막는다 */
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 10_000;
+/** 응급의료포털은 502/504/코드05 로 간헐적으로 실패한다. 짧게 재시도한다 */
+const MAX_RETRIES = 2;
+const RETRY_DELAYS_MS = [400, 1200];
 
 export const ENDPOINTS = {
   pharmacy: `${PROXY_BASE}/B552657/ErmctInsttInfoInqireService/getParmacyListInfoInqire`,
@@ -60,8 +63,20 @@ function parseItem(node, kind) {
   return item;
 }
 
-/** 공통 처리: fetch → XML 파싱 → 오류 판정. 성공 시 Document 반환 */
-async function fetchXmlDoc(url) {
+/** 상류가 흔들릴 때 재시도할지 판단 (일시적 장애만) */
+function isTransient({ status, code }) {
+  if (status && status >= 500) return true; // 502/503/504
+  // data.go.kr 자체 오류코드: 01 어플리케이션, 04 HTTP, 05 서비스 연결실패/타임아웃
+  return code === '01' || code === '04' || code === '05';
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 공통 처리: fetch → XML 파싱 → 오류 판정. 성공 시 Document 반환.
+ * 응급의료포털은 502/504/코드05 로 간헐적으로 실패하므로 짧게 재시도한다.
+ */
+async function fetchXmlDoc(url, attempt = 0) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -71,13 +86,17 @@ async function fetchXmlDoc(url) {
     res = await fetch(url, { signal: controller.signal });
     raw = await res.text();
   } catch (e) {
+    if (attempt < MAX_RETRIES) {
+      await sleep(RETRY_DELAYS_MS[attempt]);
+      return fetchXmlDoc(url, attempt + 1);
+    }
     if (e.name === 'AbortError') {
       throw new EgenError(
-        `응급의료포털이 ${REQUEST_TIMEOUT_MS / 1000}초 안에 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.`,
+        '응급의료포털이 응답하지 않습니다. 잠시 후 다시 시도해 주세요.',
         'TIMEOUT',
       );
     }
-    throw new EgenError(`응급의료포털에 연결하지 못했습니다: ${e.message}`, 'NETWORK');
+    throw new EgenError('응급의료포털에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.', 'NETWORK');
   } finally {
     clearTimeout(timer);
   }
@@ -85,22 +104,39 @@ async function fetchXmlDoc(url) {
   // data.go.kr 는 오류도 XML(<cmmMsgHeader>)로 돌려주므로 상태 코드보다 본문이 유용하다
   const doc = new DOMParser().parseFromString(raw, 'text/xml');
   const parseFailed = doc.getElementsByTagName('parsererror').length > 0;
+  const code = parseFailed ? '' : text(doc, 'resultCode') || text(doc, 'returnReasonCode');
+  const failed = (code && code !== '00' && code !== '0000') || !res.ok;
 
-  if (!parseFailed) {
-    const code = text(doc, 'resultCode') || text(doc, 'returnReasonCode');
+  if (failed && isTransient({ status: res.status, code }) && attempt < MAX_RETRIES) {
+    await sleep(RETRY_DELAYS_MS[attempt]);
+    return fetchXmlDoc(url, attempt + 1);
+  }
+
+  if (!parseFailed && code && code !== '00' && code !== '0000') {
     const msg = text(doc, 'resultMsg') || text(doc, 'returnAuthMsg') || text(doc, 'errMsg');
-    if (code && code !== '00' && code !== '0000') {
-      const hint = /SERVICE_KEY|SERVICE KEY/i.test(raw)
-        ? ' — EGEN_SERVICE_KEY 에 공공데이터포털 "Decoding" 키가 들어갔는지, 해당 서비스 활용신청이 승인됐는지 확인하세요.'
-        : '';
-      throw new EgenError(`응급의료포털 오류: ${msg || '알 수 없는 오류'} (${code})${hint}`, code);
+    if (/SERVICE_KEY|SERVICE KEY/i.test(raw)) {
+      throw new EgenError(
+        `응급의료포털 인증 오류: ${msg} — EGEN_SERVICE_KEY 에 공공데이터포털 "Decoding" 키가 들어갔는지, 해당 서비스 활용신청이 승인됐는지 확인하세요.`,
+        code,
+      );
     }
+    throw new EgenError(
+      isTransient({ code })
+        ? '응급의료포털이 일시적으로 불안정합니다. 잠시 후 다시 시도해 주세요.'
+        : `응급의료포털 오류: ${msg || '알 수 없는 오류'} (${code})`,
+      code,
+    );
   }
 
   if (!res.ok) {
     // 404 는 대개 프록시(/egen rewrite)가 배포에 반영되지 않은 경우다
-    const hint = res.status === 404 ? ' API 프록시(/egen) 설정을 확인하세요.' : '';
-    throw new EgenError(`응급의료포털 요청 실패 (HTTP ${res.status}).${hint}`, String(res.status));
+    if (res.status === 404) {
+      throw new EgenError('API 프록시(/egen) 설정을 확인하세요. (HTTP 404)', '404');
+    }
+    throw new EgenError(
+      '응급의료포털이 일시적으로 불안정합니다. 잠시 후 다시 시도해 주세요.',
+      String(res.status),
+    );
   }
 
   if (parseFailed) {
@@ -206,10 +242,12 @@ export async function fetchFacilities(kind, regions, dayCodes, variants) {
 
   const merged = new Map();
   let lastError = null;
+  let failed = 0;
 
   results.forEach((r) => {
     if (r.status === 'rejected') {
       lastError = r.reason;
+      failed += 1;
       return;
     }
     r.value.forEach((item) => {
@@ -217,10 +255,10 @@ export async function fetchFacilities(kind, regions, dayCodes, variants) {
     });
   });
 
-  // 전부 실패한 경우에만 에러를 올린다 (일부 실패는 무시하고 진행)
+  // 전부 실패한 경우에만 에러를 올린다 (일부 실패는 결과를 보여주되 알린다)
   if (merged.size === 0 && lastError) throw lastError;
 
-  return Array.from(merged.values());
+  return { items: Array.from(merged.values()), failed, total: jobs.length };
 }
 
 /* ──────────────────────────────────────────────────────────────

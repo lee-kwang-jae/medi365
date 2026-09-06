@@ -30,6 +30,8 @@ export default function App() {
   const [detailId, setDetailId] = useState(null);
   const [includeUnknown, setIncludeUnknown] = useState(false);
   const [clock, setClock] = useState(() => new Date());
+  // 상류가 일시적으로 실패했을 때 사용자가 직접 재조회할 수 있게 하는 트리거
+  const [retryKey, setRetryKey] = useState(0);
 
   const listRef = useRef(null);
   const reqRef = useRef(0);
@@ -93,7 +95,7 @@ export default function App() {
       .finally(() => {
         if (token === reqRef.current) setLoading(false);
       });
-  }, [sdkReady, tab, center]);
+  }, [sdkReady, tab, center, retryKey]);
 
   const handleSearch = useCallback(async (query) => {
     setNotice('');
@@ -118,6 +120,8 @@ export default function App() {
       setNotice(e.message);
     }
   }, [locate]);
+
+  const handleRetry = useCallback(() => setRetryKey((n) => n + 1), []);
 
   /** 지도 위 버튼에서 목록으로 이동 (모바일은 목록이 지도 아래에 있다) */
   const scrollToList = useCallback(() => {
@@ -261,6 +265,13 @@ export default function App() {
               ) : null}
             </p>
 
+            {stats?.failedRegions > 0 && (
+              <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 ring-1 ring-amber-200">
+                ⚠ 응급의료포털이 불안정해 일부 지역({stats.failedRegions}/{stats.totalRegions})을 불러오지
+                못했습니다. 결과가 실제보다 적을 수 있습니다.
+              </p>
+            )}
+
             {stats?.holidaySeason && (
               <p className="mt-2 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-800 ring-1 ring-violet-200">
                 🏮 명절 연휴입니다 — 명절 비상진료기관{' '}
@@ -293,6 +304,7 @@ export default function App() {
               emptyText={activeTab.empty}
               selectedId={selectedId}
               onSelect={handleSelect}
+              onRetry={handleRetry}
             />
           </div>
           <footer className="shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 text-center text-[11px] leading-relaxed text-slate-400">

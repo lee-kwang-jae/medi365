@@ -89,7 +89,7 @@ export async function findOpenFacilities({
       : Promise.resolve(new Map()),
   ]);
 
-  const withGeo = raw.filter((it) => it.lat != null && it.lng != null);
+  const withGeo = raw.items.filter((it) => it.lat != null && it.lng != null);
 
   const inRadius = withGeo
     .map((it) => ({ ...it, distanceKm: haversineKm(center, { lat: it.lat, lng: it.lng }) }))
@@ -133,7 +133,9 @@ export async function findOpenFacilities({
     items: evaluated,
     regions,
     stats: {
-      fetched: raw.length,
+      fetched: raw.items.length,
+      failedRegions: raw.failed,
+      totalRegions: raw.total,
       inRadius: inRadius.length,
       open: evaluated.filter((it) => it.isOpen).length,
       unknown: evaluated.filter((it) => it.unknownHours).length,
