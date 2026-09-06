@@ -1,25 +1,6 @@
 import { formatDistance } from '../lib/geo.js';
 import { formatHoursLabel } from '../lib/time.js';
-import { findPlaceUrl, kakaoLinks } from '../lib/kakao.js';
-
-/**
- * [카카오맵으로 보기]
- *  E-Gen 응답에는 place_url 이 없으므로 클릭 시 Kakao Local 로 장소를 찾아
- *  place_url 로 이동한다. 팝업 차단을 피하려고 창은 클릭 즉시 열고,
- *  주소는 조회가 끝난 뒤 채운다. 조회 실패 시 검색 URL 로 폴백.
- */
-async function openInKakaoMap(item) {
-  const fallback = kakaoLinks.search(item.name);
-  const win = window.open('about:blank', '_blank', 'noopener');
-  try {
-    const url = await findPlaceUrl(item.name, { lat: item.lat, lng: item.lng });
-    const target = url || fallback;
-    if (win) win.location.href = target;
-    else window.open(target, '_blank', 'noopener');
-  } catch {
-    if (win) win.location.href = fallback;
-  }
-}
+import { kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
 
 function StatusChip({ item }) {
   // 카카오 장소 검색 결과는 영업시간 자체가 없다. '영업 종료' 로 보이면 오해를 준다.
@@ -109,17 +90,23 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
         </dl>
 
         <div className="mt-3 flex gap-2">
-          <button
-            type="button"
+          {/*
+            앵커로 둬야 팝업이 막히거나 스크립트가 실패해도 최소한 검색 페이지는 열린다.
+            정확한 장소 페이지로 올려주는 건 onClick 의 부가 기능이다.
+          */}
+          <a
+            href={kakaoLinks.search(item.name)}
+            target="_blank"
+            rel="noopener noreferrer"
             onClick={(e) => {
               stop(e);
-              openInKakaoMap(item);
+              if (openInKakaoMap(item)) e.preventDefault();
             }}
             className="btn-ghost h-10 flex-1 text-xs sm:h-auto"
           >
             🗺️ <span className="sm:hidden">카카오맵</span>
             <span className="hidden sm:inline">카카오맵으로 보기</span>
-          </button>
+          </a>
           <a
             href={kakaoLinks.to(item.name, item.lat, item.lng)}
             target="_blank"

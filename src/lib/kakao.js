@@ -1,4 +1,5 @@
 import { SIDO_MAP } from './constants.js';
+import { haversineKm } from './geo.js';
 
 const APP_KEY = import.meta.env.VITE_KAKAO_JS_KEY || '';
 const SDK_URL = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${APP_KEY}&libraries=services&autoload=false`;
@@ -129,27 +130,50 @@ export function coordToRegion({ lat, lng }) {
   }));
 }
 
+/** 이 거리(km)를 넘게 떨어진 동명 장소는 다른 곳으로 본다. */
+const PLACE_MATCH_KM = 1;
+/**
+ * keywordSearch 의 radius 는 좁게 주면 실재하는 장소도 ZERO_RESULT 로 떨어진다.
+ * (실측: 500m → ZERO_RESULT, 5km → 정상. 같은 좌표·같은 이름)
+ * 그래서 넉넉히 받아서 우리가 직접 가까운 것을 고른다.
+ */
+const PLACE_SEARCH_RADIUS_M = 5000;
+
 /**
  * 장소명 + 좌표로 카카오맵 place_url 을 찾는다. 실패하면 null.
  * (E-Gen 응답에는 place_url 이 없으므로 상세 링크가 필요할 때만 조회)
+ *
+ * 넓게 검색하는 만큼 이름만 같고 동네가 다른 지점이 1위로 올 수 있으므로,
+ * 좌표가 {@link PLACE_MATCH_KM} 안에 있는 후보 중 가장 가까운 것만 채택한다.
  */
 export function findPlaceUrl(name, { lat, lng }) {
   return new Promise((resolve) => {
     if (!window.kakao?.maps?.services) return resolve(null);
     const options = {
       location: new window.kakao.maps.LatLng(lat, lng),
-      radius: 500,
-      size: 5,
+      radius: PLACE_SEARCH_RADIUS_M,
+      size: 15,
     };
     new (services().Places)().keywordSearch(
       name,
       (data, status) => {
         if (status !== services().Status.OK || !data.length) return resolve(null);
-        resolve(data[0].place_url || null);
+
+        const nearest = data
+          .map((p) => ({ p, km: haversineKm({ lat, lng }, { lat: Number(p.y), lng: Number(p.x) }) }))
+          .filter(({ km }) => Number.isFinite(km) && km <= PLACE_MATCH_KM)
+          .sort((a, b) => a.km - b.km)[0];
+
+        resolve(nearest ? toHttps(nearest.p.place_url) : null);
       },
       options,
     );
   });
+}
+
+/** place_url 은 http 로 내려온다. 리다이렉트 한 번을 아끼려고 미리 올린다. */
+function toHttps(url) {
+  return url ? url.replace(/^http:\/\//, 'https://') : null;
 }
 
 /** 카카오맵 외부 링크 */
@@ -158,6 +182,40 @@ export const kakaoLinks = {
   map: (name, lat, lng) => `https://map.kakao.com/link/map/${encodeURIComponent(name)},${lat},${lng}`,
   to: (name, lat, lng) => `https://map.kakao.com/link/to/${encodeURIComponent(name)},${lat},${lng}`,
 };
+
+/**
+ * 카카오맵에서 이 장소를 연다.
+ *
+ * E-Gen 응답에는 place_url 이 없어 클릭 시점에 Kakao Local 로 조회해야 하는데,
+ * 그 사이 사용자 제스처가 끝나 팝업 차단에 걸린다. 그래서 창은 제스처 안에서
+ * 먼저 비워둔 채 열고, 주소만 조회가 끝난 뒤에 채운다.
+ *
+ * `window.open` 에 `noopener` 를 넘기면 **명세상 null 이 반환되어** 이 핸들을
+ * 잃는다. 그러면 조회 후의 재시도는 제스처 밖이라 차단되고, 버튼은 아무 반응도
+ * 하지 않는다. 그래서 옵션 대신 opener 를 직접 끊는다.
+ *
+ * @returns {boolean} 창을 열었으면 true. false 는 팝업이 막힌 것이므로
+ *   호출부는 preventDefault 하지 말고 앵커의 기본 동작에 맡겨야 한다.
+ */
+export function openInKakaoMap(item) {
+  const win = window.open('about:blank', '_blank');
+  if (!win) return false;
+  try {
+    win.opener = null;
+  } catch {
+    /* 아직 about:blank 라 실패할 일은 없지만, 실패해도 이동은 계속한다 */
+  }
+
+  const fallback = kakaoLinks.search(item.name);
+  findPlaceUrl(item.name, { lat: item.lat, lng: item.lng })
+    .then((url) => {
+      win.location.href = url || fallback;
+    })
+    .catch(() => {
+      win.location.href = fallback;
+    });
+  return true;
+}
 
 /* ──────────────────────────────────────────────────────────────
  * 최후 수단: 카카오 장소 검색으로 주변 약국·병원 찾기

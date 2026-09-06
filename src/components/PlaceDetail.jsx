@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { formatDistance } from '../lib/geo.js';
 import { formatHoursLabel } from '../lib/time.js';
-import { findPlaceUrl, kakaoLinks } from '../lib/kakao.js';
+import { kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
 
 /** 상세 지도의 확대 수준. 1 이 가장 가깝고 숫자가 클수록 넓게 본다 */
 const DETAIL_LEVEL = 3;
@@ -11,19 +11,6 @@ const PIN_EMOJI = {
   hospital: '\u{1F3E5}', // 🏥
   pediatric: '\u{1F9D2}', // 🧒
 };
-
-async function openInKakaoMap(item) {
-  const fallback = kakaoLinks.search(item.name);
-  const win = window.open('about:blank', '_blank', 'noopener');
-  try {
-    const url = await findPlaceUrl(item.name, { lat: item.lat, lng: item.lng });
-    const target = url || fallback;
-    if (win) win.location.href = target;
-    else window.open(target, '_blank', 'noopener');
-  } catch {
-    if (win) win.location.href = fallback;
-  }
-}
 
 /**
  * 선택한 장소 하나만 보여주는 상세 시트.
@@ -172,13 +159,17 @@ export default function PlaceDetail({ item, kind, accent, onClose }) {
               ☎ 전화
             </a>
           )}
-          <button
-            type="button"
-            onClick={() => openInKakaoMap(item)}
+          <a
+            href={kakaoLinks.search(item.name)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              if (openInKakaoMap(item)) e.preventDefault();
+            }}
             className="btn-ghost h-11 flex-1 text-sm"
           >
             🗺️ 카카오맵
-          </button>
+          </a>
           <a
             href={kakaoLinks.to(item.name, item.lat, item.lng)}
             target="_blank"
