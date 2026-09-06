@@ -7,7 +7,13 @@ import PlaceDetail from './components/PlaceDetail.jsx';
 import useKakaoSdk from './hooks/useKakaoSdk.js';
 import useGeolocation from './hooks/useGeolocation.js';
 import { searchLocation, coordToRegion } from './lib/kakao.js';
-import { findOpenFacilities } from './lib/finder.js';
+import {
+  collectFromDataset,
+  collectFromApi,
+  collectHolidayMap,
+  evaluate,
+  mergeRows,
+} from './lib/finder.js';
 import { DEFAULT_CENTER, SEARCH_RADIUS_KM, TABS } from './lib/constants.js';
 import { nowLabel } from './lib/time.js';
 
@@ -24,6 +30,8 @@ export default function App() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // 정적 데이터는 있는데 API 만 실패한 경우 — 결과를 지우지 않고 따로 알린다
+  const [apiError, setApiError] = useState(null);
   const [notice, setNotice] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   // 상세 시트에 띄울 장소. 시트를 닫아도 지도 위 선택(마커 상태 B)은 유지한다.
@@ -65,38 +73,84 @@ export default function App() {
       .catch(() => setRegionLabel(''));
   }, [sdkReady, center]);
 
-  /* 중심 좌표 또는 탭이 바뀌면 재조회 */
+  /*
+   * 검색 파이프라인 — 두 경로를 합친다.
+   *  1) 정적 데이터셋: 미리 받아둔 파일. 상류와 무관하고 즉시 뜬다. 있으면 바로 표시한다.
+   *  2) 실시간 API  : 아직 수집하지 않은 지역과 최신 변경분을 메운다.
+   * 폴백이 아니라 합집합이라, API 가 죽어도 정적 데이터는 그대로 보인다.
+   * API 실패는 결과를 지우지 않고 화면에 따로 알린다.
+   */
   useEffect(() => {
     if (!sdkReady) return;
     const token = ++reqRef.current;
+    const isStale = () => token !== reqRef.current;
 
     setLoading(true);
     setError(null);
+    setApiError(null);
     setSelectedId(null);
     setDetailId(null);
 
-    findOpenFacilities({
+    const now = new Date();
+    const params = {
       kind: activeTab.endpoint,
       variants: activeTab.variants,
       datasetFilter: activeTab.datasetFilter,
       center,
-      now: new Date(),
-    })
-      .then(({ items: found, stats: s }) => {
-        if (token !== reqRef.current) return;
-        setItems(found);
-        setStats(s);
-      })
-      .catch((e) => {
-        if (token !== reqRef.current) return;
-        setItems([]);
-        setStats(null);
-        setError(e.message);
-      })
-      .finally(() => {
-        if (token === reqRef.current) setLoading(false);
-      });
-  }, [sdkReady, tab, center, retryKey]);
+      radiusKm: SEARCH_RADIUS_KM,
+      now,
+    };
+    let datasetRows = null;
+
+    (async () => {
+      // 1) 정적 데이터셋 — 있으면 기다리지 않고 먼저 그린다
+      try {
+        datasetRows = await collectFromDataset(params);
+        if (isStale()) return;
+        if (datasetRows?.length) {
+          const { items: shown, stats: s } = evaluate({ rows: datasetRows, center, now });
+          setItems(shown);
+          setStats({ ...s, source: 'dataset' });
+          setLoading(false); // 결과가 이미 보이므로 스켈레톤을 걷는다
+        }
+      } catch {
+        datasetRows = null; // 정적 경로 실패는 조용히 넘기고 API 로 진행
+      }
+
+      // 2) 실시간 API — 성공하면 합치고, 실패하면 알리기만 한다
+      try {
+        const api = await collectFromApi(params);
+        if (isStale()) return;
+        const holidayMap = await collectHolidayMap({ ...params, regions: api.regions });
+        if (isStale()) return;
+
+        const { items: shown, stats: s } = evaluate({
+          rows: mergeRows(datasetRows, api.items),
+          center,
+          now,
+          holidayMap,
+        });
+        setItems(shown);
+        setStats({
+          ...s,
+          source: datasetRows?.length ? 'both' : 'api',
+          failedRegions: api.failed,
+          totalRegions: api.total,
+        });
+      } catch (e) {
+        if (isStale()) return;
+        if (datasetRows?.length) {
+          setApiError(e.message); // 정적 결과는 유지한 채 통신 오류만 알린다
+        } else {
+          setItems([]);
+          setStats(null);
+          setError(e.message);
+        }
+      } finally {
+        if (!isStale()) setLoading(false);
+      }
+    })();
+  }, [sdkReady, tab, center, retryKey, activeTab]);
 
   const handleSearch = useCallback(async (query) => {
     setNotice('');
@@ -264,7 +318,23 @@ export default function App() {
                   (조회 {stats.fetched} → 반경 내 {stats.inRadius})
                 </span>
               ) : null}
+              {stats?.source === 'dataset' && (
+                <span className="ml-1 text-slate-400">· 저장된 자료</span>
+              )}
             </p>
+
+            {apiError && (
+              <div className="mt-2 rounded-lg bg-rose-50 px-2.5 py-2 text-xs text-rose-800 ring-1 ring-rose-200">
+                <p className="font-bold">⚠ 통신 오류</p>
+                <p className="mt-0.5 leading-relaxed">{apiError}</p>
+                <p className="mt-1 text-rose-600">
+                  미리 받아둔 자료로 표시 중입니다. 최근 변경분이 빠져 있을 수 있습니다.
+                </p>
+                <button type="button" onClick={handleRetry} className="btn-ghost mt-2 h-9 w-full text-xs">
+                  ↻ 다시 시도
+                </button>
+              </div>
+            )}
 
             {stats?.failedRegions > 0 && (
               <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 ring-1 ring-amber-200">

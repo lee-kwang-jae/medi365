@@ -112,27 +112,15 @@ async function loadCell(kind, key) {
 /**
  * 반경 안의 격자들을 읽어 합친다.
  *
- * 도시 단위로 조금씩 넓혀가는 중이라 아직 수집하지 않은 지역이 있다.
- * 필요한 격자 중 **하나라도 수집 범위 밖이면 null 을 돌려** 호출부가 실시간 API 로
- * 폴백하게 한다. 그렇지 않으면 미수집 지역이 오류 없이 조용히 0건이 된다.
+ * 정적 데이터는 **가진 만큼 무조건 보여준다.** 부족한 부분은 호출부가 실시간 API 결과와
+ * 합쳐서 메운다(폴백이 아니라 합집합). 그래서 여기서 커버리지를 따지지 않는다.
+ * 아직 수집하지 않은 지역은 격자 파일이 없어 자연히 비어 있을 뿐이다.
  *
- * @returns {Promise<Array|null>} 데이터셋이 없거나 범위 밖이면 null
+ * @returns {Promise<Array|null>} 데이터셋 자체가 없으면 null
  */
-export async function loadFromDataset(kind, center, radiusKm, regions) {
+export async function loadFromDataset(kind, center, radiusKm) {
   const index = await loadIndex();
-  if (!index) return null;
-  if (!index.cells?.[kind]?.length) return null;
-
-  if (!index.complete) {
-    // 부분 수집 상태 — 검색 반경에 걸친 시군구가 **모두** 수집됐을 때만 정적 데이터를 쓴다.
-    // 격자 존재 여부로 판정하면 안 된다(위 주석 참고).
-    if (!regions?.length) return null;
-    const collected = new Set(index.regions || []);
-    const ok = regions.every(
-      (r) => collected.has(`${r.q0}|${r.q1}`) || collected.has(`${r.q0}|*`),
-    );
-    if (!ok) return null;
-  }
+  if (!index?.cells?.[kind]?.length) return null;
 
   const cells = cellsForRadius(center, radiusKm);
   const chunks = await Promise.all(cells.map((key) => loadCell(kind, key)));

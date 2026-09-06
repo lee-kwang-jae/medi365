@@ -1,6 +1,6 @@
 import { coordToRegion } from './kakao.js';
 import { fetchFacilities, fetchHolidayClinics } from './egen.js';
-import { loadFromDataset, loadPediatricSet, loadIndex } from './dataset.js';
+import { loadFromDataset, loadPediatricSet } from './dataset.js';
 import { haversineKm, offsetLatLng } from './geo.js';
 import {
   getDayCode,
@@ -47,6 +47,17 @@ export async function resolveRegions(center, radiusKm = SEARCH_RADIUS_KM) {
 }
 
 /**
+ * 조회에 쓸 E-Gen 요일 코드.
+ *  - 명절 연휴: null (요일 필터 없이 전체를 받아 명절 API 와 hpid 로 조인해야 한다)
+ *  - 공휴일   : [8, 실제요일] (공휴일 시간표 미등록 기관이 서버에서 걸러지므로)
+ */
+function dayCodesFor(now) {
+  if (isHolidaySeason(now)) return null;
+  const code = getDayCode(now);
+  return code === 8 ? [8, getWeekdayCode(now)] : [code];
+}
+
+/**
  * 소아 탭의 정적 경로 필터.
  * 실시간 API 는 QD/QN 으로 서버에서 걸렀지만, 정적 데이터셋에는 진료과목 필드가 없다.
  * 대신 수집기가 받아둔 소아청소년과(D002) hpid 목록과, 이름 규칙을 그대로 적용한다.
@@ -71,87 +82,69 @@ async function filterPediatric(items, variants) {
   });
 }
 
+/* ── 후보 수집: 정적 데이터셋 / 실시간 API ──────────────────────────── */
+
 /**
  * 미리 수집해 둔 정적 데이터셋에서 후보를 읽는다.
- * 상류(E-Gen)를 타지 않으므로 장애의 영향을 받지 않고 응답도 빠르다.
- * @returns {Promise<object|null>} 데이터셋이 없으면 null → 호출부가 API 로 폴백
+ * 상류를 타지 않으므로 장애와 무관하고 즉시 응답한다.
+ * @returns {Promise<Array|null>} 데이터가 없으면 null
  */
-async function loadCandidates({ kind, variants, datasetFilter, center, radiusKm, regions }) {
-  const rows = await loadFromDataset(kind, center, radiusKm, regions);
-  if (!rows) return null;
-
-  const items = datasetFilter === 'pediatric' ? await filterPediatric(rows, variants) : rows;
-  return { items, failed: 0, total: 0, source: 'dataset' };
-}
-
-/**
- * 오늘·지금 문 연 약국/병의원을 반경 내에서 찾아 거리순으로 돌려준다.
- *
- * @param {object} params
- * @param {'pharmacy'|'hospital'} params.kind
- * @param {Array<object>} [params.variants] 조회 갈래 (진료과목·기관명 필터)
- * @param {{lat:number,lng:number}} params.center
- * @param {Date} [params.now]
- * @param {number} [params.radiusKm]
- * @returns {Promise<{items:Array, regions:Array, stats:object}>}
- */
-export async function findOpenFacilities({
+export async function collectFromDataset({
   kind,
   variants,
   datasetFilter,
   center,
-  now = new Date(),
   radiusKm = SEARCH_RADIUS_KM,
 }) {
-  const dayCode = getDayCode(now);
-  const holidaySeason = isHolidaySeason(now);
+  const rows = await loadFromDataset(kind, center, radiusKm);
+  if (!rows?.length) return null;
+  return datasetFilter === 'pediatric' ? filterPediatric(rows, variants) : rows;
+}
 
-  // 명절 연휴에는 요일 시간표가 사실상 무의미하고, 명절 API 에는 좌표가 없다.
-  // 그래서 목록 API 를 요일 필터 없이(dayCodes=null) 불러 전체 좌표를 확보한 뒤
-  // 명절 API 결과를 hpid 로 조인한다.
-  // 평상시에는 공휴일(8) 시간표 미등록 기관이 서버에서 걸러지므로 실제 요일로도 함께 조회한다.
-  const dayCodes = holidaySeason
-    ? null
-    : dayCode === 8
-      ? [8, getWeekdayCode(now)]
-      : [dayCode];
-
-  const compactDate = toCompactDate(now);
-
-  /*
-   * 1순위는 미리 수집해 둔 정적 데이터셋.
-   * 전국 수집이 끝나기 전(index.complete=false)에는 검색 반경에 걸친 시군구가 모두
-   * 수집됐는지 확인해야 하므로 행정구역을 먼저 구한다. 전국 수집이 끝나면 이 단계가
-   * 필요 없어져 카카오 호출도 사라진다.
-   */
-  const index = await loadIndex();
-  let regions = index && !index.complete ? await resolveRegions(center, radiusKm) : [];
-
-  let raw = await loadCandidates({ kind, variants, datasetFilter, center, radiusKm, regions });
-
-  if (!raw) {
-    if (!regions.length) regions = await resolveRegions(center, radiusKm);
-    if (!regions.length) {
-      throw new Error('검색 위치의 행정구역을 확인하지 못했습니다. 다른 지역명으로 시도해 보세요.');
-    }
-    raw = await fetchFacilities(kind, regions, dayCodes, variants);
-    raw.source = 'api';
+/** 실시간 API 에서 후보를 읽는다. 실패하면 예외를 던진다. */
+export async function collectFromApi({
+  kind,
+  variants,
+  center,
+  radiusKm = SEARCH_RADIUS_KM,
+  now,
+}) {
+  const regions = await resolveRegions(center, radiusKm);
+  if (!regions.length) {
+    throw new Error('검색 위치의 행정구역을 확인하지 못했습니다.');
   }
+  const raw = await fetchFacilities(kind, regions, dayCodesFor(now), variants);
+  return { items: raw.items, failed: raw.failed, total: raw.total, regions };
+}
 
-  // 명절 비상진료는 그날에만 필요하고 실시간 조회뿐이므로 별도로 가져온다
-  let holidayMap = new Map();
-  if (holidaySeason) {
-    const holidayRegions = regions.length ? regions : await resolveRegions(center, radiusKm);
-    holidayMap = await fetchHolidayClinics(holidayRegions, compactDate).catch(() => new Map());
-  }
+/**
+ * 명절 비상진료기관. 그날에만 의미가 있고 실시간 조회뿐이다.
+ * 실패해도 전체를 막지 않는다.
+ */
+export async function collectHolidayMap({
+  center,
+  radiusKm = SEARCH_RADIUS_KM,
+  now,
+  regions,
+}) {
+  if (!isHolidaySeason(now)) return new Map();
+  const rs = regions?.length ? regions : await resolveRegions(center, radiusKm);
+  return fetchHolidayClinics(rs, toCompactDate(now)).catch(() => new Map());
+}
 
-  const withGeo = raw.items.filter((it) => it.lat != null && it.lng != null);
+/* ── 판정: 시각 필터 · 반경 필터 · 정렬 ─────────────────────────────── */
 
-  const inRadius = withGeo
+/**
+ * 후보 목록을 받아 오늘·지금 문 연 곳을 거리순으로 돌려준다.
+ * 수집 경로(정적/API)와 무관하게 같은 규칙을 적용한다.
+ */
+export function evaluate({ rows, center, now = new Date(), radiusKm = SEARCH_RADIUS_KM, holidayMap = new Map() }) {
+  const nowMinutes = toMinutes(now);
+
+  const inRadius = rows
+    .filter((it) => it.lat != null && it.lng != null)
     .map((it) => ({ ...it, distanceKm: haversineKm(center, { lat: it.lat, lng: it.lng }) }))
     .filter((it) => it.distanceKm <= radiusKm);
-
-  const nowMinutes = toMinutes(now);
 
   const evaluated = inRadius
     .map((it) => {
@@ -160,7 +153,8 @@ export async function findOpenFacilities({
       // 명절 비상진료기관으로 등록된 곳은 그날 공지된 운영시간이 우선한다
       if (holiday) {
         const hours = parseHolidayTime(holiday.timeRaw);
-        const open = hours?.start != null ? nowMinutes >= hours.start && nowMinutes < hours.end : true;
+        const open =
+          hours?.start != null ? nowMinutes >= hours.start && nowMinutes < hours.end : true;
         return {
           ...it,
           holidayEmergency: true,
@@ -182,23 +176,25 @@ export async function findOpenFacilities({
         hours: state.hours,
       };
     })
-    // 명절 비상진료기관을 같은 거리대에서 우선 노출
     .sort((a, b) => a.distanceKm - b.distanceKm);
 
   return {
     items: evaluated,
-    regions,
     stats: {
-      fetched: raw.items.length,
-      failedRegions: raw.failed,
-      totalRegions: raw.total,
-      source: raw.source,
+      fetched: rows.length,
       inRadius: inRadius.length,
       open: evaluated.filter((it) => it.isOpen).length,
       unknown: evaluated.filter((it) => it.unknownHours).length,
       holidayEmergency: evaluated.filter((it) => it.holidayEmergency).length,
-      holidaySeason,
-      dayCode,
+      holidaySeason: isHolidaySeason(now),
     },
   };
+}
+
+/** 두 경로의 결과를 hpid 로 합친다. 같은 기관이면 더 최신인 API 쪽을 쓴다. */
+export function mergeRows(datasetRows, apiRows) {
+  const merged = new Map();
+  (datasetRows || []).forEach((r) => merged.set(r.id, r));
+  (apiRows || []).forEach((r) => merged.set(r.id, r));
+  return [...merged.values()];
 }
