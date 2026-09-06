@@ -50,7 +50,7 @@ export async function resolveRegions(center, radiusKm = SEARCH_RADIUS_KM) {
  *
  * @param {object} params
  * @param {'pharmacy'|'hospital'} params.kind
- * @param {string} [params.qd] 진료과목 코드 (예: D002 = 소아청소년과)
+ * @param {Array<object>} [params.variants] 조회 갈래 (진료과목·기관명 필터)
  * @param {{lat:number,lng:number}} params.center
  * @param {Date} [params.now]
  * @param {number} [params.radiusKm]
@@ -58,7 +58,7 @@ export async function resolveRegions(center, radiusKm = SEARCH_RADIUS_KM) {
  */
 export async function findOpenFacilities({
   kind,
-  qd,
+  variants,
   center,
   now = new Date(),
   radiusKm = SEARCH_RADIUS_KM,
@@ -83,7 +83,7 @@ export async function findOpenFacilities({
 
   const compactDate = toCompactDate(now);
   const [raw, holidayMap] = await Promise.all([
-    fetchFacilities(kind, regions, dayCodes, qd),
+    fetchFacilities(kind, regions, dayCodes, variants),
     holidaySeason
       ? fetchHolidayClinics(regions, compactDate).catch(() => new Map())
       : Promise.resolve(new Map()),

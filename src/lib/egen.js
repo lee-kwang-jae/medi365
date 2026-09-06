@@ -110,7 +110,7 @@ async function fetchXmlDoc(url) {
   return doc;
 }
 
-async function requestPage({ kind, q0, q1, dayCode, qd, pageNo }) {
+async function requestPage({ kind, q0, q1, dayCode, qd, qn, pageNo }) {
   const params = new URLSearchParams({
     Q0: q0,
     ORD: 'NAME',
@@ -122,6 +122,7 @@ async function requestPage({ kind, q0, q1, dayCode, qd, pageNo }) {
   if (dayCode != null) params.set('QT', String(dayCode)); // 1=월 … 7=일, 8=공휴일
   // 진료과목. 응답에 진료과목 필드가 없어 이 필터는 서버에서만 걸 수 있다
   if (qd) params.set('QD', qd);
+  if (qn) params.set('QN', qn); // 기관명 부분일치
 
   const doc = await fetchXmlDoc(`${ENDPOINTS[kind]}?${params.toString()}`);
   const nodes = Array.from(doc.getElementsByTagName('item'));
@@ -130,15 +131,15 @@ async function requestPage({ kind, q0, q1, dayCode, qd, pageNo }) {
 }
 
 /** 한 개 시군구(또는 시도 전체)에 대해 전체 페이지를 수집 */
-async function fetchRegion({ kind, q0, q1, dayCode, qd }) {
-  const first = await requestPage({ kind, q0, q1, dayCode, qd, pageNo: 1 });
+async function fetchRegion({ kind, q0, q1, dayCode, qd, qn }) {
+  const first = await requestPage({ kind, q0, q1, dayCode, qd, qn, pageNo: 1 });
   const collected = [...first.items];
 
   const totalPages = Math.min(MAX_PAGES, Math.ceil(first.totalCount / PAGE_SIZE) || 1);
   if (totalPages > 1) {
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, i) =>
-        requestPage({ kind, q0, q1, dayCode, qd, pageNo: i + 2 }).catch(() => ({ items: [] })),
+        requestPage({ kind, q0, q1, dayCode, qd, qn, pageNo: i + 2 }).catch(() => ({ items: [] })),
       ),
     );
     rest.forEach((page) => collected.push(...page.items));
@@ -154,12 +155,30 @@ async function fetchRegion({ kind, q0, q1, dayCode, qd }) {
  * @param {Array<{q0:string, q1?:string}>} regions
  * @param {number[]|null} dayCodes E-Gen 요일 코드 목록 (공휴일이면 [8, 실제요일]).
  *                                  null 이면 요일 필터 없이 전체를 받는다.
- * @param {string} [qd] 진료과목 코드 (예: D002 = 소아청소년과)
+ * @param {Array<{qd?:string, qn?:string, excludeDivPattern?:string}>} [variants]
+ *        조회 갈래. 여러 개를 주면 각각 조회한 뒤 hpid 로 합친다.
+ *        excludeDivPattern 은 그 갈래의 결과에서 제외할 종별(dutyDivNam) 정규식.
  */
-export async function fetchFacilities(kind, regions, dayCodes, qd) {
+export async function fetchFacilities(kind, regions, dayCodes, variants) {
   const codes = dayCodes?.length ? dayCodes : [null];
-  const jobs = regions.flatMap((r) =>
-    codes.map((dayCode) => fetchRegion({ kind, q0: r.q0, q1: r.q1, dayCode, qd })),
+  const list = variants?.length ? variants : [{}];
+
+  const jobs = list.flatMap((v) =>
+    regions.flatMap((r) =>
+      codes.map(async (dayCode) => {
+        const items = await fetchRegion({
+          kind,
+          q0: r.q0,
+          q1: r.q1,
+          dayCode,
+          qd: v.qd,
+          qn: v.qn,
+        });
+        if (!v.excludeDivPattern) return items;
+        const exclude = new RegExp(v.excludeDivPattern);
+        return items.filter((it) => !exclude.test(it.division || ''));
+      }),
+    ),
   );
   const results = await Promise.allSettled(jobs);
 

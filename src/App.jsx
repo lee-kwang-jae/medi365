@@ -70,7 +70,7 @@ export default function App() {
 
     findOpenFacilities({
       kind: activeTab.endpoint,
-      qd: activeTab.qd,
+      variants: activeTab.variants,
       center,
       now: new Date(),
     })
