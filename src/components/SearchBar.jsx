@@ -1,5 +1,10 @@
 import { useState } from 'react';
 
+/**
+ * 지도 위에 떠 있는 검색 바 (구글 지도 방식).
+ * 바깥 카드 + 안쪽 입력창으로 테두리가 겹치지 않도록, 이 컴포넌트 자체가
+ * 하나의 알약(pill)이 된다. 입력창은 테두리 없이 그 안에 얹는다.
+ */
 export default function SearchBar({ onSearch, onLocate, loading, locating }) {
   const [query, setQuery] = useState('');
 
@@ -10,45 +15,56 @@ export default function SearchBar({ onSearch, onLocate, loading, locating }) {
   };
 
   return (
-    <div className="w-full">
-      <form onSubmit={submit} className="flex w-full items-center gap-2">
-        {/* min-w-0 이 없으면 flex 항목이 콘텐츠 폭 아래로 줄지 않아 좁은 화면에서 넘친다 */}
-        <div className="relative min-w-0 flex-1">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-            🔍
-          </span>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="지역명 (예: 정자동)"
-            aria-label="지역 검색어"
-            className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-[15px]
-                       outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200
-                       sm:py-2 sm:text-sm"
+    <form
+      onSubmit={submit}
+      className="flex h-11 w-full items-center gap-1 rounded-full bg-white pl-3 pr-1
+                 shadow-lg ring-1 ring-black/10 transition
+                 focus-within:ring-2 focus-within:ring-brand-400"
+    >
+      <span className="shrink-0 text-slate-400" aria-hidden="true">
+        🔍
+      </span>
+
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="지역명 (예: 정자동)"
+        aria-label="지역 검색어"
+        className="min-w-0 flex-1 bg-transparent text-[15px] text-slate-900 outline-none
+                   placeholder:text-slate-400"
+      />
+
+      {/* 문구가 바뀌어도 폭이 흔들리지 않도록 너비를 고정한다 */}
+      <button
+        type="submit"
+        disabled={loading || !query.trim()}
+        aria-label="검색"
+        className="flex h-9 w-14 shrink-0 items-center justify-center rounded-full bg-brand-600
+                   text-[13px] font-bold text-white transition-colors hover:bg-brand-700
+                   disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {loading ? (
+          <span
+            className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+            aria-hidden="true"
           />
-        </div>
+        ) : (
+          '검색'
+        )}
+      </button>
 
-        <button
-          type="submit"
-          className="btn-primary h-11 shrink-0 sm:h-auto"
-          disabled={loading || !query.trim()}
-        >
-          {loading ? '검색 중…' : '검색'}
-        </button>
-
-        <button
-          type="button"
-          onClick={onLocate}
-          disabled={locating || loading}
-          title="현재 위치로 검색"
-          aria-label="현재 위치로 검색"
-          className="btn-ghost h-11 shrink-0 px-3 sm:h-auto"
-        >
-          <span aria-hidden="true">{locating ? '⏳' : '📍'}</span>
-          <span className="hidden sm:inline">내 위치</span>
-        </button>
-      </form>
-    </div>
+      <button
+        type="button"
+        onClick={onLocate}
+        disabled={locating || loading}
+        title="현재 위치로 검색"
+        aria-label="현재 위치로 검색"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500
+                   transition-colors hover:bg-slate-100 disabled:opacity-50"
+      >
+        <span aria-hidden="true">{locating ? '⏳' : '📍'}</span>
+      </button>
+    </form>
   );
 }

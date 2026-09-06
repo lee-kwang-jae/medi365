@@ -304,7 +304,7 @@ export default function App() {
             바깥 컨테이너는 pointer-events-none 이라 검색창을 비껴간 클릭은 지도로 그대로 전달된다.
           */}
           <div className="pointer-events-none absolute inset-x-2 top-2 z-20 sm:inset-x-3 sm:top-3">
-            <div className="pointer-events-auto mx-auto max-w-xl rounded-xl bg-white/95 p-2 shadow-lg ring-1 ring-black/10 backdrop-blur">
+            <div className="pointer-events-auto mx-auto max-w-xl">
               <SearchBar
                 onSearch={handleSearch}
                 onLocate={handleLocate}
