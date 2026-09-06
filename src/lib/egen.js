@@ -127,7 +127,7 @@ async function fetchRegion({ kind, q0, q1, dayCode }) {
 
 /**
  * 여러 시군구를 동시에 조회하고 hpid 기준으로 중복 제거한다.
- * (반경 10km 가 행정구역 경계를 넘는 경우를 커버하기 위함)
+ * (검색 반경이 행정구역 경계를 넘는 경우를 커버하기 위함)
  *
  * @param {'pharmacy'|'hospital'} kind
  * @param {Array<{q0:string, q1?:string}>} regions

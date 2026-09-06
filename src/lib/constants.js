@@ -1,5 +1,5 @@
-/** 검색 반경 (km) — 요구사항: 반경 10km */
-export const SEARCH_RADIUS_KM = 10;
+/** 검색 반경 (km). 이 값 하나만 바꾸면 조회 지역·거리 필터·지도 원이 모두 따라간다. */
+export const SEARCH_RADIUS_KM = 5;
 
 /** 위치 권한 거부 시 기본 중심 좌표 (성남시청) */
 export const DEFAULT_CENTER = {
