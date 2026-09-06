@@ -18,7 +18,8 @@ export default function TabBar({ value, onChange, disabled }) {
             disabled={disabled}
             onClick={() => onChange(tab.key)}
             className={[
-              'flex-1 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-bold transition-all sm:flex-none',
+              'flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-bold transition-all',
+              'sm:flex-none sm:px-4 sm:text-sm',
               active
                 ? 'bg-white text-slate-900 shadow-card ring-1 ring-black/5'
                 : 'text-slate-500 hover:text-slate-700',

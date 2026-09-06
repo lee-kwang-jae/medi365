@@ -133,18 +133,19 @@ export default function App() {
   return (
     <div className="flex min-h-full flex-col">
       {/* ── 상단 컨트롤 ─────────────────────────────── */}
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto w-full max-w-7xl px-3 py-3 sm:px-4">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="text-base font-extrabold tracking-tight sm:text-lg">
+      {/* 모바일에서는 고정하지 않는다. 헤더가 4줄이라 좁은 화면의 3분의 1을 계속 차지한다. */}
+      <header className="z-20 border-b border-slate-200 bg-white/95 backdrop-blur lg:sticky lg:top-0">
+        <div className="mx-auto w-full max-w-7xl px-3 pb-2.5 pt-2 sm:px-4 sm:py-3">
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="truncate text-[15px] font-extrabold tracking-tight sm:text-lg">
               오늘 문 연 약국·의원
             </h1>
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
-              {nowLabel(clock)} 기준
+            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 sm:px-2.5 sm:py-1">
+              {nowLabel(clock)}
             </span>
           </div>
 
-          <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start">
+          <div className="mt-2 flex flex-col gap-2 sm:mt-3 sm:gap-3 lg:flex-row lg:items-start">
             <TabBar value={tab} onChange={setTab} disabled={!sdkReady} />
             <SearchBar
               onSearch={handleSearch}
@@ -161,7 +162,9 @@ export default function App() {
         {/* 지도 */}
         <section
           aria-label="지도"
-          className="order-1 h-[40vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card lg:order-2 lg:sticky lg:top-[136px] lg:h-[calc(100vh-152px)]"
+          className="order-1 h-[42vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card
+                     [@supports(height:1dvh)]:h-[42dvh]
+                     lg:order-2 lg:sticky lg:top-[124px] lg:h-[calc(100vh-140px)] lg:[@supports(height:1dvh)]:h-[calc(100dvh-140px)]"
         >
           {sdkReady ? (
             <KakaoMap
@@ -191,7 +194,7 @@ export default function App() {
               반경 {SEARCH_RADIUS_KM}km · {activeTab.emoji} {activeTab.label} ·{' '}
               <b className="text-brand-700">{visibleItems.length}곳</b>
               {stats ? (
-                <span className="text-slate-400">
+                <span className="hidden text-slate-400 sm:inline">
                   {' '}
                   (조회 {stats.fetched} → 반경 내 {stats.inRadius})
                 </span>
@@ -235,7 +238,7 @@ export default function App() {
         </section>
       </main>
 
-      <footer className="px-4 pb-6 pt-2 text-center text-[11px] leading-relaxed text-slate-400">
+      <footer className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 text-center text-[11px] leading-relaxed text-slate-400">
         데이터 출처: 보건복지부 응급의료포털(E-Gen) 공공데이터 · 지도: 카카오맵
         <br />
         영업시간은 기관이 등록한 정보로, 실제와 다를 수 있으니 방문 전 전화 확인을 권장합니다.

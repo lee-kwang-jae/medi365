@@ -55,7 +55,7 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-slate-400">{index + 1}</span>
-              <h3 className="truncate text-[15px] font-bold text-slate-900">{item.name}</h3>
+              <h3 className="min-w-0 break-words text-[15px] font-bold text-slate-900">{item.name}</h3>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1">
               {item.division && (
@@ -78,7 +78,7 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
         <dl className="mt-2.5 space-y-1 text-[13px] text-slate-600">
           <div className="flex gap-1.5">
             <dt aria-hidden="true">📍</dt>
-            <dd className="min-w-0 flex-1">{item.address || '주소 정보 없음'}</dd>
+            <dd className="min-w-0 flex-1 break-words">{item.address || '주소 정보 없음'}</dd>
           </div>
           <div className="flex gap-1.5">
             <dt aria-hidden="true">🕒</dt>
@@ -113,16 +113,17 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
               stop(e);
               openInKakaoMap(item);
             }}
-            className="btn-ghost flex-1 text-xs"
+            className="btn-ghost h-10 flex-1 text-xs sm:h-auto"
           >
-            🗺️ 카카오맵으로 보기
+            🗺️ <span className="sm:hidden">카카오맵</span>
+            <span className="hidden sm:inline">카카오맵으로 보기</span>
           </button>
           <a
             href={kakaoLinks.to(item.name, item.lat, item.lng)}
             target="_blank"
             rel="noopener noreferrer"
             onClick={stop}
-            className="btn-primary flex-1 text-xs"
+            className="btn-primary h-10 flex-1 text-xs sm:h-auto"
           >
             🧭 길찾기
           </a>

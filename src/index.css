@@ -44,3 +44,12 @@
 .scroll-thin::-webkit-scrollbar-thumb {
   @apply rounded-full bg-slate-300;
 }
+
+/* 가로 스크롤은 되지만 막대는 감춘다 (모바일 칩 줄) */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
