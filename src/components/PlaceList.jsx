@@ -52,7 +52,7 @@ export default function PlaceList({
         </p>
         <p className="mt-2 text-sm font-semibold text-slate-700">{emptyText}</p>
         <p className="mt-1 text-xs text-slate-500">
-          다른 지역으로 검색하거나 상단의 &lsquo;영업시간 미등록 포함&rsquo; 옵션을 켜 보세요.
+          다른 지역으로 검색하거나 잠시 뒤에 다시 확인해 주세요.
         </p>
       </div>
     );
