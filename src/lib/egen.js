@@ -6,13 +6,18 @@
  *
  *  apis.data.go.kr 은 CORS 를 허용하지 않으므로 항상 프록시를 경유한다.
  *    개발  : vite.config.js 의 server.proxy ('/egen' → apis.data.go.kr)
- *    배포  : api/egen.js (서버리스 함수) + vercel.json rewrite
+ *    배포  : Cloudflare Worker (worker/egen-proxy.js), VITE_EGEN_PROXY_BASE 로 지정
+ *
+ *  인증키는 프록시가 서버에서 주입한다. 클라이언트는 키를 알지도, 보내지도 않는다.
  */
 
 const PROXY_BASE = import.meta.env.VITE_EGEN_PROXY_BASE || '/egen';
-const SERVICE_KEY = import.meta.env.VITE_EGEN_SERVICE_KEY || '';
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 5;
+
+/** 상대 경로 프록시는 Vite dev 서버에서만 동작한다 */
+const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+const PROXY_MISCONFIGURED = !PROXY_BASE.startsWith('http') && !isLocal;
 
 export const ENDPOINTS = {
   pharmacy: `${PROXY_BASE}/B552657/ErmctInsttInfoInqireService/getParmacyListInfoInqire`,
@@ -56,15 +61,15 @@ function parseItem(node, kind) {
 }
 
 async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
-  if (!SERVICE_KEY) {
+  if (PROXY_MISCONFIGURED) {
     throw new EgenError(
-      '공공데이터포털 인증키가 설정되지 않았습니다. .env 파일의 VITE_EGEN_SERVICE_KEY 를 확인하세요.',
-      'NO_KEY',
+      '배포 환경에 API 프록시 주소가 설정되지 않았습니다. ' +
+        '빌드 시 VITE_EGEN_PROXY_BASE 에 Cloudflare Worker 주소를 지정해야 합니다.',
+      'NO_PROXY',
     );
   }
 
   const params = new URLSearchParams({
-    serviceKey: SERVICE_KEY, // Decoding 키 → URLSearchParams 가 인코딩
     Q0: q0,
     QT: String(dayCode), // 요일(1=월 … 7=일, 8=공휴일)
     ORD: 'NAME',
