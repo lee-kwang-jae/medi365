@@ -13,14 +13,14 @@ export const DEFAULT_CENTER = {
 export const TABS = [
   {
     key: 'pharmacy',
-    label: '오늘 문 연 약국',
+    label: '약국',
     emoji: '💊',
     accent: '#16a34a',
     empty: '이 시간에 문을 연 약국을 찾지 못했습니다.',
   },
   {
     key: 'hospital',
-    label: '오늘 문 연 의원',
+    label: '병의원',
     emoji: '🏥',
     accent: '#1c66f5',
     empty: '이 시간에 진료 중인 병·의원을 찾지 못했습니다.',
