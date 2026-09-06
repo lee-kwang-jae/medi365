@@ -131,11 +131,24 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       const bounds = new kakao.maps.LatLngBounds();
       bounds.extend(new kakao.maps.LatLng(center.lat, center.lng));
       items.slice(0, 30).forEach((it) => bounds.extend(new kakao.maps.LatLng(it.lat, it.lng)));
-      map.setBounds(bounds, 40, 40, 40, 40);
-    } else {
-      map.setLevel(6);
-      map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+
+      // 첫 렌더에서는 지도 컨테이너 크기가 아직 확정되지 않은 상태로 setBounds 가 실행돼
+      // 축척이 엉뚱하게 잡힌다. 레이아웃이 끝난 다음 프레임에 relayout 후 맞춘다.
+      let cancelled = false;
+      const raf = requestAnimationFrame(() => {
+        if (cancelled) return;
+        map.relayout();
+        map.setBounds(bounds, 40, 40, 40, 40);
+      });
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(raf);
+      };
     }
+
+    map.setLevel(6);
+    map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, accent]);
 
