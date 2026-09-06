@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { SEARCH_RADIUS_KM } from '../lib/constants.js';
 import { formatHoursLabel } from '../lib/time.js';
 import { formatDistance } from '../lib/geo.js';
@@ -53,8 +53,27 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
   const circleRef = useRef(null);
   const centerOverlayRef = useRef(null);
   const markersRef = useRef(new Map());
+  const pendingBoundsRef = useRef(null);
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
+
+  /**
+   * 대기 중인 bounds 를 지도에 적용한다.
+   * 컨테이너가 아직 0 크기면(숨겨진 탭·레이아웃 전) 적용하지 않고 보류한다.
+   * 0 크기 상태에서 setBounds 를 호출하면 축척이 최대로 축소돼 버린다.
+   */
+  const fitPending = useCallback(() => {
+    const map = mapRef.current;
+    const box = boxRef.current;
+    if (!map || !box || !pendingBoundsRef.current) return;
+
+    const { width, height } = box.getBoundingClientRect();
+    if (width < 2 || height < 2) return; // 아직 크기가 없다 → 다음 기회에
+
+    map.relayout();
+    map.setBounds(pendingBoundsRef.current, 40, 40, 40, 40);
+    pendingBoundsRef.current = null;
+  }, []);
 
   /* 지도 최초 생성 */
   useEffect(() => {
@@ -88,9 +107,21 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     });
     centerOverlayRef.current.setMap(map);
 
-    const onIdleResize = () => map.relayout();
-    window.addEventListener('resize', onIdleResize);
-    return () => window.removeEventListener('resize', onIdleResize);
+    const onResize = () => {
+      map.relayout();
+      fitPending();
+    };
+    window.addEventListener('resize', onResize);
+
+    // 숨겨진 탭에서 열렸다가 나중에 보이는 경우까지 잡으려면 컨테이너를 직접 관찰해야 한다
+    const observer =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
+    observer?.observe(boxRef.current);
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      observer?.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -132,20 +163,13 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       bounds.extend(new kakao.maps.LatLng(center.lat, center.lng));
       items.slice(0, 30).forEach((it) => bounds.extend(new kakao.maps.LatLng(it.lat, it.lng)));
 
-      // 첫 렌더에서는 지도 컨테이너 크기가 아직 확정되지 않은 상태로 setBounds 가 실행돼
-      // 축척이 엉뚱하게 잡힌다. 레이아웃이 끝난 다음 프레임에 relayout 후 맞춘다.
-      let cancelled = false;
-      const raf = requestAnimationFrame(() => {
-        if (cancelled) return;
-        map.relayout();
-        map.setBounds(bounds, 40, 40, 40, 40);
-      });
-      return () => {
-        cancelled = true;
-        cancelAnimationFrame(raf);
-      };
+      // 컨테이너 크기가 잡힌 뒤에 적용한다 (fitPending 주석 참고)
+      pendingBoundsRef.current = bounds;
+      fitPending();
+      return undefined;
     }
 
+    pendingBoundsRef.current = null;
     map.setLevel(6);
     map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
     return undefined;
