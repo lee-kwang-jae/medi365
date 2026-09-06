@@ -1,0 +1,60 @@
+name: 응급의료포털 데이터 갱신
+
+# 앱이 검색할 때마다 E-Gen 을 호출하면 상류 장애를 그대로 맞는다.
+# 하루 한 번 미리 받아 정적 파일로 커밋해 두고, 앱은 그 파일만 읽는다.
+on:
+  schedule:
+    - cron: '0 18 * * *' # 매일 03:00 KST (UTC 18:00)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # 상류가 느려 전국 수집에 시간이 걸린다 (재시도 포함)
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 전국 데이터 수집
+        env:
+          EGEN_SERVICE_KEY: ${{ secrets.EGEN_SERVICE_KEY }}
+        run: |
+          if [ -z "$EGEN_SERVICE_KEY" ]; then
+            echo "::error::secrets.EGEN_SERVICE_KEY 가 없습니다."
+            exit 1
+          fi
+          node scripts/fetch-data.mjs
+
+      - name: 변경분만 커밋
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "변경 없음 — 커밋하지 않습니다."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git commit -m "chore(data): 응급의료포털 데이터 갱신 ($(date -u '+%Y-%m-%d'))"
+            git push
+          fi
+
+      # Vercel Git 연동이 되어 있으면 push 만으로 배포된다.
+      # 연동 대신 Deploy Hook 을 쓰는 경우에만 아래가 동작한다.
+      - name: Vercel 재배포 트리거 (선택)
+        if: steps.commit.outputs.changed == 'true' && env.HOOK != ''
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: curl -fsS -X POST "$HOOK" > /dev/null && echo "배포 요청 전송"

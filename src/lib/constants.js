@@ -44,6 +44,8 @@ export const TABS = [
      *     단, 치과·한의원·한방병원은 소아진료 대상이 아니므로 종별로 제외한다
      *     (QN=365 로 조회하면 365서울수치과의원, 365신침한의원 등이 섞여 들어온다)
      */
+    // 정적 데이터셋 경로에서 쓰는 필터 (variants 는 실시간 API 경로용)
+    datasetFilter: 'pediatric',
     variants: [
       { qd: 'D002' },
       {

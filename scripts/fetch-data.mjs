@@ -34,8 +34,9 @@ const ENDPOINT = {
 };
 
 const PAGE_SIZE = 1000;
-const MAX_ATTEMPTS = 8;
-const CONCURRENCY = 3;
+const MAX_ATTEMPTS = 12;
+const SIDO_ATTEMPTS = 3;
+const CONCURRENCY = 2;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -62,13 +63,14 @@ const tag = (xml, name) => {
  * 한 페이지 조회. 상류가 자주 흔들리므로 넉넉히 재시도한다.
  * 여기서의 재시도는 사용자를 기다리게 하지 않으므로 앱보다 공격적이어도 된다.
  */
-async function fetchPage(kind, sido, pageNo) {
+async function fetchPage(kind, sido, pageNo, extra = {}) {
   const params = new URLSearchParams({
     serviceKey: KEY,
     Q0: sido,
     ORD: 'NAME',
     pageNo: String(pageNo),
     numOfRows: String(PAGE_SIZE),
+    ...extra,
   });
   const url = `https://apis.data.go.kr/${ENDPOINT[kind]}?${params}`;
 
@@ -119,16 +121,49 @@ function parseItems(xml, kind) {
   return out;
 }
 
-async function collectSido(kind, sido) {
-  const first = await fetchPage(kind, sido, 1);
+async function collectSido(kind, sido, extra = {}) {
+  // 페이지 재시도를 다 쓰고도 실패하면 시도 전체를 처음부터 다시 받는다.
+  // 상류가 몇 분씩 통째로 죽는 일이 있어 페이지 단위 재시도만으로는 부족하다.
+  let lastError;
+  for (let round = 1; round <= SIDO_ATTEMPTS; round += 1) {
+    try {
+      return await collectSidoOnce(kind, sido, extra);
+    } catch (e) {
+      lastError = e;
+      if (round < SIDO_ATTEMPTS) {
+        console.log(`  ${sido} 재시도 ${round}/${SIDO_ATTEMPTS - 1} — ${e.message}`);
+        await sleep(30000);
+      }
+    }
+  }
+  throw lastError;
+}
+
+async function collectSidoOnce(kind, sido, extra = {}) {
+  const first = await fetchPage(kind, sido, 1, extra);
   const items = parseItems(first.xml, kind);
   const pages = Math.ceil(first.totalCount / PAGE_SIZE);
 
   for (let p = 2; p <= pages; p += 1) {
-    const { xml } = await fetchPage(kind, sido, p);
+    const { xml } = await fetchPage(kind, sido, p, extra);
     items.push(...parseItems(xml, kind));
   }
   return { items, totalCount: first.totalCount };
+}
+
+/**
+ * 소아청소년과(D002) 등록 기관의 hpid 집합.
+ * 병의원 목록 응답에는 진료과목 필드가 없어 클라이언트가 거를 수 없다.
+ * 서버 필터(QD)로만 알 수 있으므로 여기서 미리 받아 hpid 목록으로 저장한다.
+ */
+async function collectPediatric(sidoList) {
+  const tasks = sidoList.map((sido) => async () => {
+    const r = await collectSido('hospital', sido, { QD: 'D002' });
+    process.stdout.write(`  ${sido} ${r.items.length}\n`);
+    return r.items.map((row) => row[0]).filter(Boolean);
+  });
+  const ids = (await pool(tasks, CONCURRENCY)).flat();
+  return [...new Set(ids)].sort();
 }
 
 /** 동시 실행 수를 제한해 상류 부담을 줄인다 */
@@ -147,6 +182,20 @@ async function pool(tasks, limit) {
   return results;
 }
 
+/** 격자별로 나누고, 파일 내용이 매번 같도록 정렬한다 (변경 없으면 커밋도 없다) */
+function toBuckets(rows) {
+  const buckets = new Map();
+  for (const row of rows) {
+    const key = gridKey(row[7], row[8]);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(row);
+  }
+  for (const list of buckets.values()) {
+    list.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  }
+  return buckets;
+}
+
 async function run() {
   const args = process.argv.slice(2);
   const pick = (flag) => {
@@ -160,47 +209,61 @@ async function run() {
   const kinds = onlyKind ? [onlyKind] : ['pharmacy', 'hospital'];
 
   const summary = { generatedAt: new Date().toISOString(), grid: GRID, kinds: {} };
+  const collected = {}; // 전부 모은 뒤에 한 번에 쓴다
 
+  /*
+   * 상류가 수집 도중 죽는 일이 잦다. 한 시도라도 실패하면 아무것도 쓰지 않고 끝낸다.
+   * 그래야 이미 배포된 데이터가 반쪽짜리로 덮이지 않는다.
+   * 하루 한 번 도는 작업이므로 하루 거르는 편이 훼손보다 낫다.
+   */
   for (const kind of kinds) {
     const started = Date.now();
+    console.log(`\n[${kind}] ${sidoList.length}개 시도 수집`);
+
     const tasks = sidoList.map((sido) => async () => {
       const r = await collectSido(kind, sido);
       process.stdout.write(`  ${sido} ${r.items.length}/${r.totalCount}\n`);
       return r.items;
     });
 
-    console.log(`\n[${kind}] ${sidoList.length}개 시도 수집`);
-    const perSido = await pool(tasks, CONCURRENCY);
-    const all = perSido.flat();
+    const all = (await pool(tasks, CONCURRENCY)).flat();
+    collected[kind] = all;
+    summary.kinds[kind] = { count: all.length };
+    console.log(`[${kind}] ${all.length}건 · ${((Date.now() - started) / 1000).toFixed(0)}초`);
+  }
 
-    // 격자별로 나누고, 파일 내용이 매번 같도록 정렬한다 (변경 없으면 커밋도 없다)
-    const buckets = new Map();
-    for (const row of all) {
-      const key = gridKey(row[7], row[8]);
-      if (!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key).push(row);
-    }
+  let pediatricIds = null;
+  if (kinds.includes('hospital')) {
+    console.log('\n[pediatric] 소아청소년과(D002) 등록 기관 수집');
+    pediatricIds = await collectPediatric(sidoList);
+    summary.pediatric = pediatricIds.length;
+    console.log(`[pediatric] ${pediatricIds.length}건`);
+  }
 
+  // ── 여기까지 왔으면 전부 성공. 이제 한 번에 기록한다 ──
+  for (const [kind, rows] of Object.entries(collected)) {
+    const buckets = toBuckets(rows);
     const dir = path.join(OUT_DIR, kind);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
 
     let bytes = 0;
-    const cells = {};
-    for (const [key, rows] of [...buckets].sort((a, b) => a[0].localeCompare(b[0]))) {
-      rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-      const json = JSON.stringify(rows);
+    for (const [key, list] of [...buckets].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const json = JSON.stringify(list);
       fs.writeFileSync(path.join(dir, `${key}.json`), json);
       bytes += json.length;
-      cells[key] = rows.length;
     }
-
-    summary.kinds[kind] = { count: all.length, cells: buckets.size, bytes };
+    summary.kinds[kind].cells = buckets.size;
+    summary.kinds[kind].bytes = bytes;
     console.log(
-      `[${kind}] ${all.length}건 · 격자 ${buckets.size}개 · ${(bytes / 1024 / 1024).toFixed(1)}MB · ${(
-        (Date.now() - started) / 1000
-      ).toFixed(0)}초`,
+      `[${kind}] 격자 ${buckets.size}개 · ${(bytes / 1024 / 1024).toFixed(1)}MB 기록`,
     );
+  }
+
+  if (pediatricIds) {
+    const tagDir = path.join(OUT_DIR, 'tags');
+    fs.mkdirSync(tagDir, { recursive: true });
+    fs.writeFileSync(path.join(tagDir, 'pediatric.json'), JSON.stringify(pediatricIds));
   }
 
   fs.mkdirSync(OUT_DIR, { recursive: true });

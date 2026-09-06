@@ -78,6 +78,7 @@ export default function App() {
     findOpenFacilities({
       kind: activeTab.endpoint,
       variants: activeTab.variants,
+      datasetFilter: activeTab.datasetFilter,
       center,
       now: new Date(),
     })

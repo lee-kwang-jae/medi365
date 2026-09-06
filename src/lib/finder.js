@@ -1,5 +1,6 @@
 import { coordToRegion } from './kakao.js';
 import { fetchFacilities, fetchHolidayClinics } from './egen.js';
+import { loadFromDataset, loadPediatricSet } from './dataset.js';
 import { haversineKm, offsetLatLng } from './geo.js';
 import {
   getDayCode,
@@ -46,6 +47,44 @@ export async function resolveRegions(center, radiusKm = SEARCH_RADIUS_KM) {
 }
 
 /**
+ * 소아 탭의 정적 경로 필터.
+ * 실시간 API 는 QD/QN 으로 서버에서 걸렀지만, 정적 데이터셋에는 진료과목 필드가 없다.
+ * 대신 수집기가 받아둔 소아청소년과(D002) hpid 목록과, 이름 규칙을 그대로 적용한다.
+ */
+async function filterPediatric(items, variants) {
+  const ids = await loadPediatricSet();
+  const nameRule = variants?.find((v) => v.qn);
+  const excludeDiv = nameRule?.excludeDivPattern && new RegExp(nameRule.excludeDivPattern);
+  const excludeAfter = nameRule?.excludeAfterPattern && new RegExp(nameRule.excludeAfterPattern);
+  const qn = nameRule?.qn;
+
+  return items.filter((it) => {
+    if (ids.has(it.id)) return true; // 소아청소년과 등록 기관
+    if (!qn || !it.name?.includes(qn)) return false;
+    if (excludeDiv?.test(it.division || '')) return false;
+    if (excludeAfter) {
+      const at = it.name.indexOf(qn);
+      const tail = at < 0 ? it.name : it.name.slice(at + qn.length);
+      if (excludeAfter.test(tail)) return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * 미리 수집해 둔 정적 데이터셋에서 후보를 읽는다.
+ * 상류(E-Gen)를 타지 않으므로 장애의 영향을 받지 않고 응답도 빠르다.
+ * @returns {Promise<object|null>} 데이터셋이 없으면 null → 호출부가 API 로 폴백
+ */
+async function loadCandidates({ kind, variants, datasetFilter, center, radiusKm }) {
+  const rows = await loadFromDataset(kind, center, radiusKm);
+  if (!rows) return null;
+
+  const items = datasetFilter === 'pediatric' ? await filterPediatric(rows, variants) : rows;
+  return { items, failed: 0, total: 0, source: 'dataset' };
+}
+
+/**
  * 오늘·지금 문 연 약국/병의원을 반경 내에서 찾아 거리순으로 돌려준다.
  *
  * @param {object} params
@@ -59,15 +98,11 @@ export async function resolveRegions(center, radiusKm = SEARCH_RADIUS_KM) {
 export async function findOpenFacilities({
   kind,
   variants,
+  datasetFilter,
   center,
   now = new Date(),
   radiusKm = SEARCH_RADIUS_KM,
 }) {
-  const regions = await resolveRegions(center, radiusKm);
-  if (!regions.length) {
-    throw new Error('검색 위치의 행정구역을 확인하지 못했습니다. 다른 지역명으로 시도해 보세요.');
-  }
-
   const dayCode = getDayCode(now);
   const holidaySeason = isHolidaySeason(now);
 
@@ -82,12 +117,25 @@ export async function findOpenFacilities({
       : [dayCode];
 
   const compactDate = toCompactDate(now);
-  const [raw, holidayMap] = await Promise.all([
-    fetchFacilities(kind, regions, dayCodes, variants),
-    holidaySeason
-      ? fetchHolidayClinics(regions, compactDate).catch(() => new Map())
-      : Promise.resolve(new Map()),
-  ]);
+
+  // 1순위: 미리 수집해 둔 정적 데이터셋. 없으면 실시간 API 로 폴백한다.
+  let raw = await loadCandidates({ kind, variants, datasetFilter, center, radiusKm });
+  let regions = [];
+  if (!raw) {
+    regions = await resolveRegions(center, radiusKm);
+    if (!regions.length) {
+      throw new Error('검색 위치의 행정구역을 확인하지 못했습니다. 다른 지역명으로 시도해 보세요.');
+    }
+    raw = await fetchFacilities(kind, regions, dayCodes, variants);
+    raw.source = 'api';
+  }
+
+  // 명절 비상진료는 그날에만 필요하고 실시간 조회뿐이므로 별도로 가져온다
+  let holidayMap = new Map();
+  if (holidaySeason) {
+    const holidayRegions = regions.length ? regions : await resolveRegions(center, radiusKm);
+    holidayMap = await fetchHolidayClinics(holidayRegions, compactDate).catch(() => new Map());
+  }
 
   const withGeo = raw.items.filter((it) => it.lat != null && it.lng != null);
 
@@ -136,6 +184,7 @@ export async function findOpenFacilities({
       fetched: raw.items.length,
       failedRegions: raw.failed,
       totalRegions: raw.total,
+      source: raw.source,
       inRadius: inRadius.length,
       open: evaluated.filter((it) => it.isOpen).length,
       unknown: evaluated.filter((it) => it.unknownHours).length,
