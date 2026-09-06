@@ -13,3 +13,4 @@ scripts/.queue-collect.mjs
 scripts/.chain-collect.mjs
 scripts/.queue.json
 scripts/.worker.mjs
+*.zip
