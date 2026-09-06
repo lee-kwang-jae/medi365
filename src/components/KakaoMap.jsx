@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { SEARCH_RADIUS_KM } from '../lib/constants.js';
-import { formatHoursLabel } from '../lib/time.js';
-import { formatDistance } from '../lib/geo.js';
 
 /**
  * 첫 화면에서 지도를 맞출 기준 개수.
@@ -73,25 +71,9 @@ function centerContent(label) {
   );
 }
 
-function infoWindowHtml(item) {
-  const tel = item.tel
-    ? `<a href="tel:${escapeHtml(item.tel)}" style="color:#1c66f5;font-weight:600">${escapeHtml(item.tel)}</a>`
-    : '<span style="color:#94a3b8">전화번호 없음</span>';
-
-  return `
-    <div class="kakao-iw">
-      <div style="font-weight:700;font-size:14px;margin-bottom:6px">${escapeHtml(item.name)}</div>
-      <div style="color:#475569;margin-bottom:4px">${escapeHtml(item.address)}</div>
-      <div style="margin-bottom:4px">☎ ${tel}</div>
-      <div style="margin-bottom:4px">🕒 ${escapeHtml(formatHoursLabel(item.hours))}</div>
-      <div style="color:#64748b">📍 ${escapeHtml(formatDistance(item.distanceKm))}</div>
-    </div>`;
-}
-
 export default function KakaoMap({ center, centerLabel, items, selectedId, onSelect, accent, kind }) {
   const boxRef = useRef(null);
   const mapRef = useRef(null);
-  const infoRef = useRef(null);
   const circleRef = useRef(null);
   const centerOverlayRef = useRef(null);
   const markersRef = useRef(new Map());
@@ -133,8 +115,6 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     // 지도 배경 클릭 시 선택 해제 (마커 클릭은 stopPropagation 으로 여기까지 오지 않는다)
     kakao.maps.event.addListener(map, 'click', () => selectRef.current?.(null));
 
-    infoRef.current = new kakao.maps.InfoWindow({ removable: true, zIndex: 20 });
-
     circleRef.current = new kakao.maps.Circle({
       center: map.getCenter(),
       radius: SEARCH_RADIUS_KM * 1000,
@@ -172,7 +152,6 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
 
       // 이 효과가 만든 것은 이 효과가 치운다.
       // 정리하지 않으면 재마운트 때 원·중심 오버레이가 그대로 겹쳐 쌓인다.
-      infoRef.current?.close();
       markersRef.current.forEach((m) => m.overlay.setMap(null));
       markersRef.current = new Map();
       circleRef.current?.setMap(null);
@@ -180,7 +159,6 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       pendingBoundsRef.current = null;
       circleRef.current = null;
       centerOverlayRef.current = null;
-      infoRef.current = null;
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,7 +181,6 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     if (!map) return;
     const { kakao } = window;
 
-    infoRef.current?.close();
     markersRef.current.forEach((m) => m.overlay.setMap(null));
     markersRef.current = new Map();
 
@@ -253,7 +230,7 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, accent, kind]);
 
-  /* 선택 상태: 마커 상태 A↔B 전환 + panTo + 인포윈도우 */
+  /* 선택 상태: 마커 상태 A↔B 전환 + panTo (상세는 PlaceDetail 시트가 맡는다) */
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -266,19 +243,10 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       m.overlay.setZIndex(on ? 10 : 1);
     });
 
-    if (!selectedId) {
-      infoRef.current?.close();
-      return;
-    }
+    if (!selectedId) return;
 
-    const item = items.find((it) => it.id === selectedId);
     const marker = markersRef.current.get(selectedId);
-    if (!item || !marker) return;
-
-    map.panTo(marker.position);
-    infoRef.current.setContent(infoWindowHtml(item));
-    infoRef.current.setPosition(marker.position);
-    infoRef.current.open(map);
+    if (marker) map.panTo(marker.position);
   }, [selectedId, items]);
 
   return <div ref={boxRef} className="h-full w-full" />;

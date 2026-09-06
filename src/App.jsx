@@ -3,6 +3,7 @@ import TabBar from './components/TabBar.jsx';
 import SearchBar from './components/SearchBar.jsx';
 import KakaoMap from './components/KakaoMap.jsx';
 import PlaceList from './components/PlaceList.jsx';
+import PlaceDetail from './components/PlaceDetail.jsx';
 import useKakaoSdk from './hooks/useKakaoSdk.js';
 import useGeolocation from './hooks/useGeolocation.js';
 import { searchLocation, coordToRegion } from './lib/kakao.js';
@@ -25,6 +26,8 @@ export default function App() {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState('');
   const [selectedId, setSelectedId] = useState(null);
+  // 상세 시트에 띄울 장소. 시트를 닫아도 지도 위 선택(마커 상태 B)은 유지한다.
+  const [detailId, setDetailId] = useState(null);
   const [includeUnknown, setIncludeUnknown] = useState(false);
   const [clock, setClock] = useState(() => new Date());
 
@@ -67,6 +70,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setSelectedId(null);
+    setDetailId(null);
 
     findOpenFacilities({
       kind: activeTab.endpoint,
@@ -113,6 +117,12 @@ export default function App() {
       setNotice(e.message);
     }
   }, [locate]);
+
+  /** 목록 카드·지도 마커 공통 진입점. 장소를 선택하고 상세 시트를 연다. */
+  const handleSelect = useCallback((id) => {
+    setSelectedId(id);
+    setDetailId(id);
+  }, []);
 
   /* 표시 대상: 지금 영업중 (+옵션에 따라 시간 미등록 포함) */
   const visibleItems = useMemo(
@@ -177,7 +187,7 @@ export default function App() {
               centerLabel={centerLabel}
               items={visibleItems}
               selectedId={selectedId}
-              onSelect={setSelectedId}
+              onSelect={handleSelect}
               accent={activeTab.accent}
               kind={tab}
             />
@@ -237,11 +247,18 @@ export default function App() {
               error={error}
               emptyText={activeTab.empty}
               selectedId={selectedId}
-              onSelect={setSelectedId}
+              onSelect={handleSelect}
             />
           </div>
         </section>
       </main>
+
+      <PlaceDetail
+        item={visibleItems.find((it) => it.id === detailId) ?? null}
+        kind={tab}
+        accent={activeTab.accent}
+        onClose={() => setDetailId(null)}
+      />
 
       <footer className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 text-center text-[11px] leading-relaxed text-slate-400">
         데이터 출처: 보건복지부 응급의료포털(E-Gen) 공공데이터 · 지도: 카카오맵
