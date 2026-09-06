@@ -137,6 +137,19 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     return () => {
       window.removeEventListener('resize', onResize);
       observer?.disconnect();
+
+      // 이 효과가 만든 것은 이 효과가 치운다.
+      // 정리하지 않으면 재마운트 때 원·중심 오버레이가 그대로 겹쳐 쌓인다.
+      infoRef.current?.close();
+      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current = new Map();
+      circleRef.current?.setMap(null);
+      centerOverlayRef.current?.setMap(null);
+      pendingBoundsRef.current = null;
+      circleRef.current = null;
+      centerOverlayRef.current = null;
+      infoRef.current = null;
+      mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
