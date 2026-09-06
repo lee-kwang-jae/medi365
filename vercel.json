@@ -2,7 +2,6 @@
   "rewrites": [{ "source": "/egen/(.*)", "destination": "/api/egen?path=$1" }],
   "headers": [
     {
-      "//": "HTML 은 절대 캐시하지 않는다. 배포마다 에셋 해시가 바뀌는데 옛 HTML 이 캐시되면 사라진 번들을 가리켜 흰 화면이 된다",
       "source": "/",
       "headers": [{ "key": "cache-control", "value": "public, max-age=0, must-revalidate" }]
     },
@@ -11,7 +10,6 @@
       "headers": [{ "key": "cache-control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
-      "//": "해시가 붙은 에셋은 내용이 바뀌면 이름도 바뀌므로 영구 캐시해도 안전하다",
       "source": "/assets/(.*)",
       "headers": [{ "key": "cache-control", "value": "public, max-age=31536000, immutable" }]
     }
