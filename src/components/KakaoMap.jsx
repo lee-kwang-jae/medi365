@@ -3,6 +3,14 @@ import { SEARCH_RADIUS_KM } from '../lib/constants.js';
 import { formatHoursLabel } from '../lib/time.js';
 import { formatDistance } from '../lib/geo.js';
 
+/**
+ * 첫 화면에서 지도를 맞출 기준 개수.
+ * 전체를 담으면 반경 끝의 한 곳 때문에 축척이 과하게 넓어져
+ * 정작 가까운 곳들이 뭉쳐 보인다. 검색 위치 + 가장 가까운 N곳만 담는다.
+ * (items 는 finder 에서 거리 오름차순으로 정렬되어 온다)
+ */
+const FIT_NEAREST_COUNT = 5;
+
 const escapeHtml = (value = '') =>
   String(value).replace(
     /[&<>"']/g,
@@ -190,7 +198,9 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     if (items.length) {
       const bounds = new kakao.maps.LatLngBounds();
       bounds.extend(new kakao.maps.LatLng(center.lat, center.lng));
-      items.slice(0, 30).forEach((it) => bounds.extend(new kakao.maps.LatLng(it.lat, it.lng)));
+      items
+        .slice(0, FIT_NEAREST_COUNT)
+        .forEach((it) => bounds.extend(new kakao.maps.LatLng(it.lat, it.lng)));
 
       // 컨테이너 크기가 잡힌 뒤에 적용한다 (fitPending 주석 참고)
       pendingBoundsRef.current = bounds;
