@@ -5,7 +5,7 @@ import { useState } from 'react';
  * 바깥 카드 + 안쪽 입력창으로 테두리가 겹치지 않도록, 이 컴포넌트 자체가
  * 하나의 알약(pill)이 된다. 입력창은 테두리 없이 그 안에 얹는다.
  */
-export default function SearchBar({ onSearch, onLocate, loading, locating }) {
+export default function SearchBar({ onSearch, loading }) {
   const [query, setQuery] = useState('');
 
   const submit = (e) => {
@@ -52,18 +52,6 @@ export default function SearchBar({ onSearch, onLocate, loading, locating }) {
         ) : (
           '검색'
         )}
-      </button>
-
-      <button
-        type="button"
-        onClick={onLocate}
-        disabled={locating || loading}
-        title="현재 위치로 검색"
-        aria-label="현재 위치로 검색"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500
-                   transition-colors hover:bg-slate-100 disabled:opacity-50"
-      >
-        <span aria-hidden="true">{locating ? '⏳' : '📍'}</span>
       </button>
     </form>
   );

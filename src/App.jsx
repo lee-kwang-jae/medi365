@@ -306,12 +306,7 @@ export default function App() {
           */}
           <div className="pointer-events-none absolute inset-x-2 top-2 z-20 sm:inset-x-3 sm:top-3">
             <div className="pointer-events-auto mx-auto max-w-xl">
-              <SearchBar
-                onSearch={handleSearch}
-                onLocate={handleLocate}
-                loading={loading || !sdkReady}
-                locating={locating}
-              />
+              <SearchBar onSearch={handleSearch} loading={loading || !sdkReady} />
             </div>
           </div>
 
@@ -363,9 +358,24 @@ export default function App() {
               </div>
             ) : (
               <>
-            <p className="truncate text-sm font-bold text-slate-800">
-              <span aria-hidden="true">📍</span> {centerLabel}
-            </p>
+            {/*
+              검색 바에서 위치 버튼을 뺐으므로, 다른 지역을 검색한 뒤 내 위치로
+              돌아올 통로가 여기 하나뿐이다. 지우면 새로고침 말고는 방법이 없다.
+            */}
+            <div className="flex items-baseline gap-2">
+              <p className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">
+                <span aria-hidden="true">📍</span> {centerLabel}
+              </p>
+              <button
+                type="button"
+                onClick={handleLocate}
+                disabled={locating}
+                className="shrink-0 text-xs font-bold text-brand-600 transition-colors
+                           hover:text-brand-700 disabled:opacity-50"
+              >
+                {locating ? '확인 중…' : '내 위치'}
+              </button>
+            </div>
             {regionLabel && <p className="mt-0.5 text-xs text-slate-500">{regionLabel}</p>}
             <p className="mt-1.5 text-xs text-slate-500">
               반경 {SEARCH_RADIUS_KM}km · {activeTab.emoji} {activeTab.label} ·{' '}
