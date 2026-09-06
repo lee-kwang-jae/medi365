@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { SEARCH_RADIUS_KM } from '../lib/constants.js';
+import { SEARCH_RADIUS_KM, INITIAL_VIEW } from '../lib/constants.js';
 
 /**
  * 첫 화면에서 지도를 맞출 기준 개수.
@@ -76,6 +76,9 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
   const centerOverlayRef = useRef(null);
   const markersRef = useRef(new Map());
   const pendingBoundsRef = useRef(null);
+  // relayout 후 중심을 되돌리기 위한 값. 컨테이너가 0 크기일 때 만들어진 지도는
+  // 크기가 잡히면서 중심이 틀어진다.
+  const viewCenterRef = useRef(null);
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
   // 마커 클릭 핸들러가 최신 선택 상태를 보려면 ref 가 필요하다(재클릭 = 해제)
@@ -104,12 +107,16 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
   useEffect(() => {
     const { kakao } = window;
     const map = new kakao.maps.Map(boxRef.current, {
-      center: new kakao.maps.LatLng(center.lat, center.lng),
-      level: 6,
+      center: new kakao.maps.LatLng(
+        center?.lat ?? INITIAL_VIEW.lat,
+        center?.lng ?? INITIAL_VIEW.lng,
+      ),
+      level: center ? 6 : INITIAL_VIEW.level,
     });
     // 검색창이 지도 위쪽에 떠 있으므로 줌 컨트롤은 우측 하단으로 뺀다
     map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.BOTTOMRIGHT);
     mapRef.current = map;
+    viewCenterRef.current = map.getCenter();
 
     // 지도 배경 클릭 시 선택 해제 (마커 클릭은 stopPropagation 으로 여기까지 오지 않는다)
     kakao.maps.event.addListener(map, 'click', () => selectRef.current?.(null));
@@ -124,7 +131,7 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       fillColor: '#1c66f5',
       fillOpacity: 0.05,
     });
-    circleRef.current.setMap(map);
+    if (center) circleRef.current.setMap(map);
 
     centerOverlayRef.current = new kakao.maps.CustomOverlay({
       position: map.getCenter(),
@@ -132,11 +139,13 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       zIndex: 5,
       content: centerContent(centerLabel || '검색 위치'),
     });
-    centerOverlayRef.current.setMap(map);
+    if (center) centerOverlayRef.current.setMap(map);
 
     const onResize = () => {
       map.relayout();
-      fitPending();
+      // 맞출 bounds 가 있으면 그쪽이 우선, 없으면 원래 보던 중심으로 되돌린다
+      if (pendingBoundsRef.current) fitPending();
+      else if (viewCenterRef.current) map.setCenter(viewCenterRef.current);
     };
     window.addEventListener('resize', onResize);
 
@@ -167,12 +176,21 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    if (!center) {
+      // 아직 검색 위치가 없다 — 반경 원과 중심 표식을 숨긴다
+      circleRef.current?.setMap(null);
+      centerOverlayRef.current?.setMap(null);
+      return;
+    }
     const pos = new window.kakao.maps.LatLng(center.lat, center.lng);
+    viewCenterRef.current = pos;
     map.setCenter(pos);
+    circleRef.current?.setMap(map);
     circleRef.current?.setPosition(pos);
+    centerOverlayRef.current?.setMap(map);
     centerOverlayRef.current?.setPosition(pos);
     centerOverlayRef.current?.setContent(centerContent(centerLabel || '검색 위치'));
-  }, [center.lat, center.lng, centerLabel]);
+  }, [center?.lat, center?.lng, centerLabel]);
 
   /* 마커 갱신 */
   useEffect(() => {
@@ -209,7 +227,7 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       markersRef.current.set(item.id, { overlay, mk, position });
     });
 
-    if (items.length) {
+    if (items.length && center) {
       const bounds = new kakao.maps.LatLngBounds();
       bounds.extend(new kakao.maps.LatLng(center.lat, center.lng));
       items
@@ -223,8 +241,10 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     }
 
     pendingBoundsRef.current = null;
-    map.setLevel(6);
-    map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+    if (center) {
+      map.setLevel(6);
+      map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+    }
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, accent, kind]);

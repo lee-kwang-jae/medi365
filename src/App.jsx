@@ -15,7 +15,7 @@ import {
   evaluate,
   mergeRows,
 } from './lib/finder.js';
-import { DEFAULT_CENTER, SEARCH_RADIUS_KM, TABS } from './lib/constants.js';
+import { SEARCH_RADIUS_KM, TABS } from './lib/constants.js';
 import { nowLabel } from './lib/time.js';
 
 export default function App() {
@@ -23,8 +23,10 @@ export default function App() {
   const { locate, locating } = useGeolocation();
 
   const [tab, setTab] = useState('pharmacy');
-  const [center, setCenter] = useState({ lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng });
-  const [centerLabel, setCenterLabel] = useState(DEFAULT_CENTER.label);
+  // 검색 기준 위치. 현재 위치를 얻거나 사용자가 검색하기 전까지는 없다(null).
+  // 임의의 기본 지역을 넣으면 엉뚱한 동네 결과를 내 위치인 양 보여주게 된다.
+  const [center, setCenter] = useState(null);
+  const [centerLabel, setCenterLabel] = useState('');
   const [regionLabel, setRegionLabel] = useState('');
 
   const [items, setItems] = useState([]);
@@ -53,7 +55,7 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  /* 최초 로딩: 현재 위치 취득 (거부 시 기본 좌표 유지) */
+  /* 최초 로딩: 현재 위치를 기준으로 시작한다 */
   useEffect(() => {
     if (!sdkReady || geoTriedRef.current) return;
     geoTriedRef.current = true;
@@ -62,12 +64,12 @@ export default function App() {
         setCenter({ lat: pos.lat, lng: pos.lng });
         setCenterLabel('현재 위치');
       })
-      .catch((e) => setNotice(`${e.message} 기본 위치(${DEFAULT_CENTER.name})를 기준으로 표시합니다.`));
+      .catch((e) => setNotice(e.message));
   }, [sdkReady, locate]);
 
   /* 중심 좌표의 행정구역 라벨 */
   useEffect(() => {
-    if (!sdkReady) return;
+    if (!sdkReady || !center) return;
     coordToRegion(center)
       .then((r) => setRegionLabel(r?.label ?? ''))
       .catch(() => setRegionLabel(''));
@@ -82,7 +84,7 @@ export default function App() {
    * 상류가 죽어 있어도 사용자는 12초 안에 무언가를 본다.
    */
   useEffect(() => {
-    if (!sdkReady) return;
+    if (!sdkReady || !center) return;
     const token = ++reqRef.current;
     const isStale = () => token !== reqRef.current;
 
@@ -344,6 +346,23 @@ export default function App() {
           className="order-2 flex min-w-0 flex-col gap-2.5 lg:order-1 lg:min-h-0"
         >
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-card">
+            {!center ? (
+              <div className="text-center">
+                <p className="text-sm font-bold text-slate-800">위치를 확인해 주세요</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  현재 위치를 허용하면 주변을 바로 찾아드립니다. 지역명으로 검색해도 됩니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleLocate}
+                  disabled={locating}
+                  className="btn-primary mt-3 h-11 w-full text-sm"
+                >
+                  {locating ? '위치 확인 중…' : '📍 내 위치로 찾기'}
+                </button>
+              </div>
+            ) : (
+              <>
             <p className="truncate text-sm font-bold text-slate-800">
               <span aria-hidden="true">📍</span> {centerLabel}
             </p>
@@ -404,6 +423,8 @@ export default function App() {
                 <b>{stats.holidayEmergency}곳</b>의 공지 운영시간을 우선 반영했습니다.
               </p>
             )}
+              </>
+            )}
 
           </div>
 
@@ -414,6 +435,7 @@ export default function App() {
           )}
 
           <div className="scroll-thin min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
+            {center && (
             <PlaceList
               items={visibleItems}
               loading={loading}
@@ -423,6 +445,7 @@ export default function App() {
               onSelect={handleSelect}
               onRetry={handleRetry}
             />
+            )}
           </div>
           <footer className="shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 text-center text-[11px] leading-relaxed text-slate-400">
             데이터 출처: 보건복지부 응급의료포털(E-Gen) 공공데이터 · 지도: 카카오맵
