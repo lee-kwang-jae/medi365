@@ -147,6 +147,29 @@ async function fetchRegion({ kind, q0, q1, dayCode, qd, qn }) {
   return collected;
 }
 
+/** 조회 갈래별 후처리 필터 (종별 제외 / 이름 뒷부분 제외) */
+function applyVariantFilters(items, v) {
+  let result = items;
+
+  if (v.excludeDivPattern) {
+    const byDiv = new RegExp(v.excludeDivPattern);
+    result = result.filter((it) => !byDiv.test(it.division || ''));
+  }
+
+  if (v.excludeAfterPattern && v.qn) {
+    const byTail = new RegExp(v.excludeAfterPattern);
+    result = result.filter((it) => {
+      const name = it.name || '';
+      const at = name.indexOf(v.qn);
+      // qn 이 없으면(있을 수 없지만) 이름 전체를 대상으로 본다
+      const tail = at < 0 ? name : name.slice(at + v.qn.length);
+      return !byTail.test(tail);
+    });
+  }
+
+  return result;
+}
+
 /**
  * 여러 시군구를 동시에 조회하고 hpid 기준으로 중복 제거한다.
  * (검색 반경이 행정구역 경계를 넘는 경우를 커버하기 위함)
@@ -155,9 +178,10 @@ async function fetchRegion({ kind, q0, q1, dayCode, qd, qn }) {
  * @param {Array<{q0:string, q1?:string}>} regions
  * @param {number[]|null} dayCodes E-Gen 요일 코드 목록 (공휴일이면 [8, 실제요일]).
  *                                  null 이면 요일 필터 없이 전체를 받는다.
- * @param {Array<{qd?:string, qn?:string, excludeDivPattern?:string}>} [variants]
+ * @param {Array<{qd?:string, qn?:string, excludeDivPattern?:string, excludeAfterPattern?:string}>} [variants]
  *        조회 갈래. 여러 개를 주면 각각 조회한 뒤 hpid 로 합친다.
- *        excludeDivPattern 은 그 갈래의 결과에서 제외할 종별(dutyDivNam) 정규식.
+ *        excludeDivPattern   그 갈래에서 제외할 종별(dutyDivNam) 정규식
+ *        excludeAfterPattern 기관명 중 qn 뒤쪽 부분에 이 패턴이 있으면 제외
  */
 export async function fetchFacilities(kind, regions, dayCodes, variants) {
   const codes = dayCodes?.length ? dayCodes : [null];
@@ -174,9 +198,7 @@ export async function fetchFacilities(kind, regions, dayCodes, variants) {
           qd: v.qd,
           qn: v.qn,
         });
-        if (!v.excludeDivPattern) return items;
-        const exclude = new RegExp(v.excludeDivPattern);
-        return items.filter((it) => !exclude.test(it.division || ''));
+        return applyVariantFilters(items, v);
       }),
     ),
   );
