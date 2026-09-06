@@ -152,10 +152,13 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-full flex-col">
+    // 데스크톱은 화면 높이에 딱 맞춰 페이지 스크롤을 없앤다.
+    // 지도 높이를 calc(100vh - 헤더높이) 같은 매직 넘버로 맞추면 헤더가 바뀔 때마다 어긋난다.
+    <div className="flex min-h-full flex-col lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden">
       {/* ── 상단 컨트롤 ─────────────────────────────── */}
-      {/* 모바일에서는 고정하지 않는다. 헤더가 4줄이라 좁은 화면의 3분의 1을 계속 차지한다. */}
-      <header className="z-20 border-b border-slate-200 bg-white/95 backdrop-blur lg:sticky lg:top-0">
+      {/* 검색창은 지도 안으로 옮겼다(구글 지도 방식). 헤더에는 제목과 탭만 남는다. */}
+      {/* 모바일에서는 고정하지 않는다. 좁은 화면에서 세로 공간을 계속 차지한다. */}
+      <header className="z-20 shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto w-full max-w-7xl px-3 pb-2.5 pt-2 sm:px-4 sm:py-3">
           <div className="flex items-center justify-between gap-2">
             <h1 className="truncate text-[15px] font-extrabold tracking-tight sm:text-lg">
@@ -166,26 +169,20 @@ export default function App() {
             </span>
           </div>
 
-          <div className="mt-2 flex flex-col gap-2 sm:mt-3 sm:gap-3 lg:flex-row lg:items-start">
+          <div className="mt-2 sm:mt-3">
             <TabBar value={tab} onChange={setTab} disabled={!sdkReady} />
-            <SearchBar
-              onSearch={handleSearch}
-              onLocate={handleLocate}
-              loading={loading || !sdkReady}
-              locating={locating}
-            />
           </div>
         </div>
       </header>
 
       {/* ── 본문 ────────────────────────────────────── */}
-      <main className="mx-auto grid w-full max-w-7xl flex-1 gap-3 p-3 sm:px-4 lg:grid-cols-[minmax(340px,400px)_1fr]">
+      <main className="mx-auto grid w-full max-w-7xl flex-1 gap-3 p-3 sm:px-4 lg:min-h-0 lg:grid-cols-[minmax(340px,400px)_1fr]">
         {/* 지도 */}
         <section
           aria-label="지도"
-          className="relative order-1 h-[42vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card
-                     [@supports(height:1dvh)]:h-[42dvh]
-                     lg:order-2 lg:sticky lg:top-[124px] lg:h-[calc(100vh-140px)] lg:[@supports(height:1dvh)]:h-[calc(100dvh-140px)]"
+          className="relative order-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card
+                     max-lg:h-[52vh] max-lg:[@supports(height:1dvh)]:h-[52dvh]
+                     lg:order-2 lg:h-full"
         >
           {sdkReady ? (
             <KakaoMap
@@ -202,6 +199,21 @@ export default function App() {
               지도를 불러오는 중…
             </div>
           )}
+
+          {/*
+            구글 지도처럼 검색창을 지도 위에 띄운다.
+            바깥 컨테이너는 pointer-events-none 이라 검색창을 비껴간 클릭은 지도로 그대로 전달된다.
+          */}
+          <div className="pointer-events-none absolute inset-x-2 top-2 z-20 sm:inset-x-3 sm:top-3">
+            <div className="pointer-events-auto mx-auto max-w-xl rounded-xl bg-white/95 p-2 shadow-lg ring-1 ring-black/10 backdrop-blur">
+              <SearchBar
+                onSearch={handleSearch}
+                onLocate={handleLocate}
+                loading={loading || !sdkReady}
+                locating={locating}
+              />
+            </div>
+          </div>
 
           {/*
             목록으로 이동. 모바일은 지도 아래에 목록이 이어지므로 스크롤이 필요하다.
@@ -231,7 +243,7 @@ export default function App() {
         <section
           ref={listRef}
           aria-label="검색 결과"
-          className="order-2 flex min-w-0 flex-col gap-2.5 lg:order-1"
+          className="order-2 flex min-w-0 flex-col gap-2.5 lg:order-1 lg:min-h-0"
         >
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-card">
             <p className="truncate text-sm font-bold text-slate-800">
@@ -283,6 +295,11 @@ export default function App() {
               onSelect={handleSelect}
             />
           </div>
+          <footer className="shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 text-center text-[11px] leading-relaxed text-slate-400">
+            데이터 출처: 보건복지부 응급의료포털(E-Gen) 공공데이터 · 지도: 카카오맵
+            <br />
+            영업시간은 기관이 등록한 정보로, 실제와 다를 수 있으니 방문 전 전화 확인을 권장합니다.
+          </footer>
         </section>
       </main>
 
@@ -293,11 +310,6 @@ export default function App() {
         onClose={() => setDetailId(null)}
       />
 
-      <footer className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 text-center text-[11px] leading-relaxed text-slate-400">
-        데이터 출처: 보건복지부 응급의료포털(E-Gen) 공공데이터 · 지도: 카카오맵
-        <br />
-        영업시간은 기관이 등록한 정보로, 실제와 다를 수 있으니 방문 전 전화 확인을 권장합니다.
-      </footer>
     </div>
   );
 }

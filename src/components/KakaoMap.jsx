@@ -109,7 +109,8 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
       center: new kakao.maps.LatLng(center.lat, center.lng),
       level: 6,
     });
-    map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+    // 검색창이 지도 위쪽에 떠 있으므로 줌 컨트롤은 우측 하단으로 뺀다
+    map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.BOTTOMRIGHT);
     mapRef.current = map;
 
     // 지도 배경 클릭 시 선택 해제 (마커 클릭은 stopPropagation 으로 여기까지 오지 않는다)
