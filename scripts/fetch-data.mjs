@@ -12,6 +12,7 @@
  *
  * 실행: node scripts/fetch-data.mjs                       (전국, 통째로 재생성)
  *       node scripts/fetch-data.mjs --sido 경기도 --sigungu 하남시   (부분, 병합)
+ *       node scripts/fetch-data.mjs --if-older-than 20              (20시간 이내면 건너뜀)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -241,7 +242,25 @@ async function run() {
   const onlySido = pick('--sido');
   const onlySigungu = pick('--sigungu');
   const onlyKind = pick('--kind');
+  const maxAgeHours = Number(pick('--if-older-than')) || 0;
   const partial = Boolean(onlySido || onlySigungu);
+
+  const indexPath = path.join(OUT_DIR, 'index.json');
+  const existing = readJson(indexPath, null);
+
+  /*
+   * 이미 충분히 최신이면 아무것도 하지 않는다.
+   * 자동 갱신을 짧은 주기로 돌리되(상류가 복구되면 곧 잡히도록) 멀쩡한 데이터가 있을 때는
+   * 상류를 건드리지 않기 위한 장치다.
+   */
+  if (maxAgeHours && existing?.generatedAt) {
+    const ageH = (Date.now() - Date.parse(existing.generatedAt)) / 3_600_000;
+    if (ageH < maxAgeHours) {
+      console.log(`이미 최신 (${ageH.toFixed(1)}시간 전 갱신 < ${maxAgeHours}시간) — 건너뜁니다`);
+      return;
+    }
+    console.log(`마지막 갱신 ${ageH.toFixed(1)}시간 전 — 수집을 시작합니다`);
+  }
 
   if (onlySigungu && !onlySido) {
     throw new Error('--sigungu 는 --sido 와 함께 써야 합니다');
@@ -279,8 +298,25 @@ async function run() {
     console.log(`[pediatric] ${pediatricIds.length}건`);
   }
 
-  // ── 여기까지 왔으면 전부 성공. 이제 기록한다 ──
-  const indexFile = path.join(OUT_DIR, 'index.json');
+  /*
+   * ── 여기까지 왔으면 전부 성공. 기록 전 마지막 안전장치 ──
+   * 상류가 "성공" 을 돌려주면서도 내용이 반쪽인 경우가 있었다(광주 전체 10건 등).
+   * 전국 수집에서 이전보다 크게 줄었으면 덮어쓰지 않는다.
+   * 하루 거르는 편이 멀쩡한 데이터를 훼손하는 것보다 낫다.
+   */
+  if (!partial && existing?.kinds) {
+    for (const [kind, rows] of Object.entries(collected)) {
+      const before = existing.kinds[kind]?.count;
+      if (before && rows.length < before * 0.5) {
+        throw new Error(
+          `${kind} 수집 결과가 이전(${before}건)의 절반 미만(${rows.length}건)입니다. ` +
+            '상류 응답이 불완전한 것으로 보고 기존 데이터를 유지합니다.',
+        );
+      }
+    }
+  }
+
+  const indexFile = indexPath;
   const summary = readJson(indexFile, { grid: GRID, kinds: {}, cells: {} });
   summary.generatedAt = new Date().toISOString();
   summary.grid = GRID;
@@ -296,7 +332,12 @@ async function run() {
   for (const [kind, rows] of Object.entries(collected)) {
     const cells = writeBuckets(kind, rows, partial);
     summary.cells[kind] = cells;
-    summary.kinds[kind] = { cells: cells.length, lastAdded: rows.length, region: label };
+    summary.kinds[kind] = {
+      cells: cells.length,
+      count: partial ? (existing?.kinds?.[kind]?.count ?? rows.length) : rows.length,
+      lastAdded: rows.length,
+      region: label,
+    };
     console.log(`[${kind}] 격자 ${cells.length}개`);
   }
 
