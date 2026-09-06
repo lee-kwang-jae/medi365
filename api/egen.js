@@ -37,11 +37,29 @@ export default async function handler(req, res) {
   try {
     const upstream = await fetch(target.toString());
     const body = await upstream.text();
+
     res.status(upstream.status);
     res.setHeader('content-type', upstream.headers.get('content-type') || 'application/xml');
-    res.setHeader('cache-control', 's-maxage=60, stale-while-revalidate=300');
+
+    /*
+     * 성공 응답만 캐시한다.
+     * 응급의료포털은 오류를 HTTP 200 + 오류 XML 로 내려주기도 해서, 상태 코드만 보고
+     * 캐시하면 CDN 이 오류를 정상 응답으로 알고 저장한다. 그러면 '다시 시도' 를 눌러도
+     * 캐시된 오류가 그대로 돌아와 장애가 캐시 기간만큼 고정된다.
+     *
+     * 캐시해도 정확도에 영향이 없는 이유: 여기서 캐시되는 건 기관 목록과 요일별
+     * 진료시간표뿐이다. '지금 영업중' 판정은 브라우저가 현재 시각으로 매번 계산한다.
+     */
+    const code = (body.match(/<resultCode>([^<]*)<|<returnReasonCode>([^<]*)</) || []).slice(1).find(Boolean);
+    const cacheable = upstream.ok && (code === '00' || code === '0000');
+
+    res.setHeader(
+      'cache-control',
+      cacheable ? 's-maxage=300, stale-while-revalidate=600' : 'no-store',
+    );
     res.send(body);
   } catch (e) {
+    res.setHeader('cache-control', 'no-store');
     res.status(502).send(`upstream error: ${e.message}`);
   }
 }
