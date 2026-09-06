@@ -72,11 +72,11 @@ src/
 │  └─ useGeolocation.js       브라우저 위치 취득
 └─ lib/
    ├─ kakao.js                주소/키워드 검색, 좌표→행정구역, place_url 조회
-   ├─ egen.js                 E-Gen Open API 클라이언트 (XML 파싱)
+   ├─ egen.js                 E-Gen Open API 클라이언트 (약국·병의원·명절 비상진료, XML 파싱)
    ├─ finder.js               지역 해석 → 조회 → 시간 필터 → 반경 필터 → 정렬
    ├─ geo.js                  Haversine 거리 계산
    ├─ time.js                 요일 코드 / 영업시간 판정
-   └─ constants.js            반경·기본좌표·시도 매핑·공휴일
+   └─ constants.js            반경·기본좌표·시도 매핑·공휴일·명절 연휴
 api/
 └─ egen.js                    Vercel 서버리스 프록시 (CORS 우회 + 인증키 주입)
 ```
@@ -94,6 +94,13 @@ api/
    - 병·의원 `HsptlAsembySearchService/getHsptlMdcncListInfoInqire`
    - 공휴일에는 공휴일 시간표를 등록하지 않은 기관이 서버에서 걸러지므로,
      `QT=8` 과 실제 요일 코드로 각각 조회해 합친다.
+3-1. **명절 연휴 (설·추석)** — 위 목록 API 를 **요일 필터 없이** 호출해 전체 좌표를 확보하고,
+   국립중앙의료원 「전국 명절 비상 진료기관 정보 조회 서비스」를 함께 조회해 `hpid` 로 조인한다.
+   - `HolidyEmgncClnicInsttInfoInqireService/getHolidyClnicPosblEgytInfoInqire`
+   - 이 API 응답에는 **좌표가 없어서** 목록 API 의 `wgs84Lat/Lon` 을 빌려 쓴다.
+   - 요일 필터를 빼는 이유: "평소 그 요일엔 안 열지만 명절엔 여는 곳" 이 서버 단계에서
+     사라지면 명절 데이터를 조인할 대상 자체가 없어지기 때문이다.
+   - 명절 비상진료기관은 그날 공지된 `dutyDaytime{n}` 이 요일 시간표보다 우선한다.
 4. **시각 필터** — Open API는 요일까지만 좁혀주므로, 응답의
    `dutyTime1s~8s`(시작, QT31~QT38) / `dutyTime1c~8c`(종료, QT41~QT48)와
    현재 `HHMM`을 비교해 **실제 영업 중**인 곳만 남긴다.
@@ -106,6 +113,9 @@ api/
   종별(`의원`/`병원`/`종합병원` 등)을 카드에 배지로 표시한다. 상급 병원을 숨기면
   야간·휴일에 실제로 갈 수 있는 곳이 사라지기 때문에 종별로 잘라내지 않았다.
 - 영업시간을 등록하지 않은 기관은 기본적으로 제외되며, 리스트 상단 체크박스로 포함시킬 수 있다.
+- 명절 API 는 개발계정 트래픽이 **1,000회/일**로 다른 서비스보다 훨씬 빠듯하다.
+  그래서 `src/lib/constants.js` 의 `HOLIDAY_SEASONS` 에 등록된 설·추석 연휴 당일에만 호출한다.
+  평상시에는 한 번도 부르지 않으므로 한도를 소모하지 않는다. **매년 갱신 필요.**
 - 공휴일 목록은 `src/lib/constants.js` 의 `HOLIDAYS` 에 하드코딩되어 있다.
   정확도가 중요하면 공공데이터포털 「특일 정보(getRestDeInfo)」 API로 대체할 것.
   목록에 없는 날은 평일 시간표로 동작하므로 누락돼도 앱은 정상 작동한다.

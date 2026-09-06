@@ -62,6 +62,9 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
                 <span className="chip bg-slate-100 text-slate-600">{item.division}</span>
               )}
               <StatusChip item={item} />
+              {item.holidayEmergency && (
+                <span className="chip bg-violet-100 text-violet-700">🏮 명절 비상진료</span>
+              )}
               {item.emergency && (
                 <span className="chip bg-rose-100 text-rose-700">{item.emergency}</span>
               )}
@@ -97,6 +100,9 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
               )}
             </dd>
           </div>
+          {item.holidayNote && (
+            <p className="pt-0.5 text-xs font-medium text-violet-700">{item.holidayNote}</p>
+          )}
           {item.etc && <p className="pt-0.5 text-xs text-slate-400">{item.etc}</p>}
         </dl>
 

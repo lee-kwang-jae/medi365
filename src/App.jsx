@@ -197,6 +197,13 @@ export default function App() {
               ) : null}
             </p>
 
+            {stats?.holidaySeason && (
+              <p className="mt-2 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-800 ring-1 ring-violet-200">
+                🏮 명절 연휴입니다 — 명절 비상진료기관{' '}
+                <b>{stats.holidayEmergency}곳</b>의 공지 운영시간을 우선 반영했습니다.
+              </p>
+            )}
+
             <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs text-slate-600">
               <input
                 type="checkbox"

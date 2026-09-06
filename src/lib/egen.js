@@ -18,6 +18,8 @@ const MAX_PAGES = 5;
 export const ENDPOINTS = {
   pharmacy: `${PROXY_BASE}/B552657/ErmctInsttInfoInqireService/getParmacyListInfoInqire`,
   hospital: `${PROXY_BASE}/B552657/HsptlAsembySearchService/getHsptlMdcncListInfoInqire`,
+  // 국립중앙의료원_전국 명절 비상 진료기관 정보 조회 서비스
+  holiday: `${PROXY_BASE}/B552657/HolidyEmgncClnicInsttInfoInqireService/getHolidyClnicPosblEgytInfoInqire`,
 };
 
 export class EgenError extends Error {
@@ -56,17 +58,9 @@ function parseItem(node, kind) {
   return item;
 }
 
-async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
-  const params = new URLSearchParams({
-    Q0: q0,
-    QT: String(dayCode), // 요일(1=월 … 7=일, 8=공휴일)
-    ORD: 'NAME',
-    pageNo: String(pageNo),
-    numOfRows: String(PAGE_SIZE),
-  });
-  if (q1) params.set('Q1', q1);
-
-  const res = await fetch(`${ENDPOINTS[kind]}?${params.toString()}`);
+/** 공통 처리: fetch → XML 파싱 → 오류 판정. 성공 시 Document 반환 */
+async function fetchXmlDoc(url) {
+  const res = await fetch(url);
   const raw = await res.text();
 
   // data.go.kr 는 오류도 XML(<cmmMsgHeader>)로 돌려주므로 상태 코드보다 본문이 유용하다
@@ -94,6 +88,21 @@ async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
     throw new EgenError('응급의료포털 응답을 해석할 수 없습니다.', 'PARSE');
   }
 
+  return doc;
+}
+
+async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
+  const params = new URLSearchParams({
+    Q0: q0,
+    ORD: 'NAME',
+    pageNo: String(pageNo),
+    numOfRows: String(PAGE_SIZE),
+  });
+  if (q1) params.set('Q1', q1);
+  // dayCode 가 없으면 요일 필터 없이 전체 목록을 받는다 (명절 조인용 좌표 확보 목적)
+  if (dayCode != null) params.set('QT', String(dayCode)); // 1=월 … 7=일, 8=공휴일
+
+  const doc = await fetchXmlDoc(`${ENDPOINTS[kind]}?${params.toString()}`);
   const nodes = Array.from(doc.getElementsByTagName('item'));
   const totalCount = Number(text(doc, 'totalCount') || nodes.length);
   return { items: nodes.map((n) => parseItem(n, kind)), totalCount };
@@ -122,11 +131,13 @@ async function fetchRegion({ kind, q0, q1, dayCode }) {
  *
  * @param {'pharmacy'|'hospital'} kind
  * @param {Array<{q0:string, q1?:string}>} regions
- * @param {number[]} dayCodes E-Gen 요일 코드 목록 (공휴일이면 [8, 실제요일])
+ * @param {number[]|null} dayCodes E-Gen 요일 코드 목록 (공휴일이면 [8, 실제요일]).
+ *                                  null 이면 요일 필터 없이 전체를 받는다.
  */
 export async function fetchFacilities(kind, regions, dayCodes) {
+  const codes = dayCodes?.length ? dayCodes : [null];
   const jobs = regions.flatMap((r) =>
-    dayCodes.map((dayCode) => fetchRegion({ kind, q0: r.q0, q1: r.q1, dayCode })),
+    codes.map((dayCode) => fetchRegion({ kind, q0: r.q0, q1: r.q1, dayCode })),
   );
   const results = await Promise.allSettled(jobs);
 
@@ -147,4 +158,101 @@ export async function fetchFacilities(kind, regions, dayCodes) {
   if (merged.size === 0 && lastError) throw lastError;
 
   return Array.from(merged.values());
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * 국립중앙의료원 「전국 명절 비상 진료기관 정보 조회 서비스」
+ *
+ *  · 오퍼레이션 : getHolidyClnicPosblEgytInfoInqire
+ *  · 요청       : Q0(시도) Q1(시군구) QD(진료과목, H=약국) QT(명절일자 YYYYMMDD)
+ *  · 응답       : hpid dutyName dutyAddr dutyTel1 dutyDivNam
+ *                 dutyDay1~10(진료일자) dutyDaytime1~10('09:00~17:00') dutyDayEtc
+ *
+ *  ※ 이 API 응답에는 좌표(wgs84Lat/Lon)가 없다. 지도 표시와 반경 필터에는
+ *    좌표가 필수이므로, 명절에는 약국/병의원 목록 API 를 "요일 필터 없이"
+ *    호출해 좌표를 확보한 뒤 hpid 로 조인한다. (finder.js 참조)
+ *  ※ 개발계정 트래픽이 1,000회/일로 빠듯해 명절 연휴에만 호출한다.
+ * ────────────────────────────────────────────────────────────── */
+
+/** 응답 한 건 → { hpid, name, addr, tel, divName, timeRaw, etc } */
+function parseHolidayItem(node, compactDate) {
+  const item = {
+    hpid: text(node, 'hpid'),
+    name: text(node, 'dutyName'),
+    addr: text(node, 'dutyAddr'),
+    tel: text(node, 'dutyTel1'),
+    divName: text(node, 'dutyDivNam'),
+    etc: text(node, 'dutyDayEtc'),
+    timeRaw: '',
+  };
+
+  // dutyDay1~10 중 오늘 날짜와 일치하는 칸의 dutyDaytime{n} 을 고른다
+  for (let i = 1; i <= 10; i += 1) {
+    const day = text(node, `dutyDay${i}`).replace(/\D/g, '');
+    if (day && day === compactDate) {
+      item.timeRaw = text(node, `dutyDaytime${i}`);
+      break;
+    }
+  }
+  return item;
+}
+
+async function requestHolidayPage({ q0, q1, compactDate, pageNo }) {
+  const params = new URLSearchParams({
+    Q0: q0,
+    QT: compactDate, // 명절일자 YYYYMMDD
+    ORD: 'NAME',
+    pageNo: String(pageNo),
+    numOfRows: String(PAGE_SIZE),
+  });
+  if (q1) params.set('Q1', q1);
+
+  const doc = await fetchXmlDoc(`${ENDPOINTS.holiday}?${params.toString()}`);
+  const nodes = Array.from(doc.getElementsByTagName('item'));
+  const totalCount = Number(text(doc, 'totalCount') || nodes.length);
+  return { items: nodes.map((n) => parseHolidayItem(n, compactDate)), totalCount };
+}
+
+/**
+ * 명절 비상진료기관을 시군구별로 조회해 hpid → 정보 맵으로 돌려준다.
+ * 일부 지역 조회가 실패해도 나머지는 그대로 사용한다 (부가 정보이므로 전체를 막지 않는다).
+ *
+ * @param {Array<{q0:string, q1?:string}>} regions
+ * @param {string} compactDate 'YYYYMMDD'
+ * @returns {Promise<Map<string, object>>}
+ */
+export async function fetchHolidayClinics(regions, compactDate) {
+  const results = await Promise.allSettled(
+    regions.map(async (r) => {
+      const first = await requestHolidayPage({
+        q0: r.q0,
+        q1: r.q1,
+        compactDate,
+        pageNo: 1,
+      });
+      const collected = [...first.items];
+
+      const totalPages = Math.min(MAX_PAGES, Math.ceil(first.totalCount / PAGE_SIZE) || 1);
+      if (totalPages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) =>
+            requestHolidayPage({ q0: r.q0, q1: r.q1, compactDate, pageNo: i + 2 }).catch(() => ({
+              items: [],
+            })),
+          ),
+        );
+        rest.forEach((page) => collected.push(...page.items));
+      }
+      return collected;
+    }),
+  );
+
+  const byHpid = new Map();
+  results.forEach((r) => {
+    if (r.status !== 'fulfilled') return;
+    r.value.forEach((item) => {
+      if (item.hpid && !byHpid.has(item.hpid)) byHpid.set(item.hpid, item);
+    });
+  });
+  return byHpid;
 }

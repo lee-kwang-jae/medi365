@@ -1,4 +1,4 @@
-import { HOLIDAYS } from './constants.js';
+import { HOLIDAYS, HOLIDAY_SEASONS } from './constants.js';
 
 /**
  * 응급의료포털(E-Gen) 진료시간 필드 규칙
@@ -25,6 +25,34 @@ export function toDateKey(date) {
 /** 공휴일 여부 */
 export function isHoliday(date) {
   return HOLIDAYS.has(toDateKey(date));
+}
+
+/** 설·추석 연휴 기간인지 (명절 비상진료 API 호출 여부를 가른다) */
+export function isHolidaySeason(date) {
+  return HOLIDAY_SEASONS.has(toDateKey(date));
+}
+
+/** Date → 'YYYYMMDD' (명절 API 의 QT 파라미터 형식) */
+export function toCompactDate(date) {
+  return toDateKey(date).replace(/-/g, '');
+}
+
+/**
+ * 명절 API 의 진료시간 문자열('09:00~17:00')을 내부 hours 모델로 변환한다.
+ * 시간 형식이 아닌 값(예: '24시간')은 문구를 그대로 보존한다.
+ */
+export function parseHolidayTime(raw) {
+  if (!raw) return null;
+  const m = String(raw).match(/(\d{1,2}):?(\d{2})\s*[~\-–]\s*(\d{1,2}):?(\d{2})/);
+  if (!m) return { note: String(raw).trim() };
+
+  const startRaw = `${m[1].padStart(2, '0')}${m[2]}`;
+  const endRaw = `${m[3].padStart(2, '0')}${m[4]}`;
+  const start = parseHHMM(startRaw);
+  let end = parseHHMM(endRaw);
+  if (start == null || end == null) return { note: String(raw).trim() };
+  if (end <= start) end += 24 * 60; // 익일까지 운영
+  return { start, end, startRaw, endRaw };
 }
 
 /**
@@ -70,7 +98,8 @@ export function parseHHMM(value) {
 export function formatHHMM(value) {
   const min = parseHHMM(value);
   if (min == null) return '';
-  const h = Math.floor(min / 60) % 24;
+  // '2400'(자정 마감)은 '00:00' 이 아니라 '24:00' 으로 보여야 뜻이 통한다
+  const h = min === 1440 ? 24 : Math.floor(min / 60) % 24;
   const m = min % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
@@ -109,6 +138,7 @@ export function getTodayHours(item, date = new Date()) {
 /** 'HH:MM ~ HH:MM' 형태의 표기 (없으면 '정보 없음') */
 export function formatHoursLabel(hours) {
   if (!hours) return '영업시간 정보 없음';
+  if (hours.note) return hours.note; // 명절 API 의 자유 문구 (예: '24시간')
   const s = formatHHMM(hours.startRaw);
   const e = formatHHMM(hours.endRaw);
   const overnight = hours.end > 24 * 60 ? ' (익일)' : '';

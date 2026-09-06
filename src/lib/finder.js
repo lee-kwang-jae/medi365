@@ -1,7 +1,15 @@
 import { coordToRegion } from './kakao.js';
-import { fetchFacilities } from './egen.js';
+import { fetchFacilities, fetchHolidayClinics } from './egen.js';
 import { haversineKm, offsetLatLng } from './geo.js';
-import { getDayCode, getWeekdayCode, getOpenState } from './time.js';
+import {
+  getDayCode,
+  getWeekdayCode,
+  getOpenState,
+  isHolidaySeason,
+  toCompactDate,
+  toMinutes,
+  parseHolidayTime,
+} from './time.js';
 import { SEARCH_RADIUS_KM } from './constants.js';
 
 /**
@@ -58,11 +66,26 @@ export async function findOpenFacilities({
     throw new Error('검색 위치의 행정구역을 확인하지 못했습니다. 다른 지역명으로 시도해 보세요.');
   }
 
-  // 공휴일에는 공휴일(8) 시간표를 등록하지 않은 곳이 서버 단계에서 걸러지므로
-  // 실제 요일 코드로도 함께 조회한 뒤 합친다. (실제 영업 여부는 아래에서 시각으로 판정)
   const dayCode = getDayCode(now);
-  const dayCodes = dayCode === 8 ? [8, getWeekdayCode(now)] : [dayCode];
-  const raw = await fetchFacilities(kind, regions, dayCodes);
+  const holidaySeason = isHolidaySeason(now);
+
+  // 명절 연휴에는 요일 시간표가 사실상 무의미하고, 명절 API 에는 좌표가 없다.
+  // 그래서 목록 API 를 요일 필터 없이(dayCodes=null) 불러 전체 좌표를 확보한 뒤
+  // 명절 API 결과를 hpid 로 조인한다.
+  // 평상시에는 공휴일(8) 시간표 미등록 기관이 서버에서 걸러지므로 실제 요일로도 함께 조회한다.
+  const dayCodes = holidaySeason
+    ? null
+    : dayCode === 8
+      ? [8, getWeekdayCode(now)]
+      : [dayCode];
+
+  const compactDate = toCompactDate(now);
+  const [raw, holidayMap] = await Promise.all([
+    fetchFacilities(kind, regions, dayCodes),
+    holidaySeason
+      ? fetchHolidayClinics(regions, compactDate).catch(() => new Map())
+      : Promise.resolve(new Map()),
+  ]);
 
   const withGeo = raw.filter((it) => it.lat != null && it.lng != null);
 
@@ -70,11 +93,38 @@ export async function findOpenFacilities({
     .map((it) => ({ ...it, distanceKm: haversineKm(center, { lat: it.lat, lng: it.lng }) }))
     .filter((it) => it.distanceKm <= radiusKm);
 
+  const nowMinutes = toMinutes(now);
+
   const evaluated = inRadius
     .map((it) => {
+      const holiday = holidayMap.get(it.id);
+
+      // 명절 비상진료기관으로 등록된 곳은 그날 공지된 운영시간이 우선한다
+      if (holiday) {
+        const hours = parseHolidayTime(holiday.timeRaw);
+        const open = hours?.start != null ? nowMinutes >= hours.start && nowMinutes < hours.end : true;
+        return {
+          ...it,
+          holidayEmergency: true,
+          holidayNote: holiday.etc || '',
+          tel: it.tel || holiday.tel,
+          hours: hours ?? null,
+          // 시간 문구를 해석하지 못하면(예: '24시간') 열려 있는 것으로 본다
+          isOpen: open,
+          unknownHours: !hours,
+        };
+      }
+
       const state = getOpenState(it, now);
-      return { ...it, isOpen: state.open, unknownHours: state.unknown, hours: state.hours };
+      return {
+        ...it,
+        holidayEmergency: false,
+        isOpen: state.open,
+        unknownHours: state.unknown,
+        hours: state.hours,
+      };
     })
+    // 명절 비상진료기관을 같은 거리대에서 우선 노출
     .sort((a, b) => a.distanceKm - b.distanceKm);
 
   return {
@@ -85,6 +135,8 @@ export async function findOpenFacilities({
       inRadius: inRadius.length,
       open: evaluated.filter((it) => it.isOpen).length,
       unknown: evaluated.filter((it) => it.unknownHours).length,
+      holidayEmergency: evaluated.filter((it) => it.holidayEmergency).length,
+      holidaySeason,
       dayCode,
     },
   };
