@@ -68,7 +68,12 @@ export default function App() {
     setError(null);
     setSelectedId(null);
 
-    findOpenFacilities({ kind: tab, center, now: new Date() })
+    findOpenFacilities({
+      kind: activeTab.endpoint,
+      qd: activeTab.qd,
+      center,
+      now: new Date(),
+    })
       .then(({ items: found, stats: s }) => {
         if (token !== reqRef.current) return;
         setItems(found);

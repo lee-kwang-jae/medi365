@@ -27,6 +27,7 @@ const escapeHtml = (value = '') =>
 const PIN_EMOJI = {
   pharmacy: '\u{1F48A}', // 💊
   hospital: '\u{1F3E5}', // 🏥
+  pediatric: '\u{1F9D2}', // 🧒
 };
 
 function pinImage(kakao, color, kind) {

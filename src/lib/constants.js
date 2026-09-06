@@ -9,10 +9,18 @@ export const DEFAULT_CENTER = {
   label: '성남시청 (기본 위치)',
 };
 
-/** 탭 정의 */
+/**
+ * 탭 정의
+ *  endpoint : 어떤 E-Gen 목록 API 를 부를지 (약국 / 병의원)
+ *  qd       : 병의원 API 의 진료과목 코드. 지정하면 서버에서 해당 과목만 조회한다.
+ *             D002 = 소아청소년과 (실측 확인: 이름에 '소아청소년과' 가 든 기관이
+ *             모두 D002 에 포함되고, 다른 지역에서도 동일하게 재현됨)
+ *             ※ 병의원 목록 응답에는 진료과목 필드가 없어 클라이언트 필터가 불가능하다.
+ */
 export const TABS = [
   {
     key: 'pharmacy',
+    endpoint: 'pharmacy',
     label: '약국',
     emoji: '💊',
     accent: '#16a34a',
@@ -20,10 +28,20 @@ export const TABS = [
   },
   {
     key: 'hospital',
+    endpoint: 'hospital',
     label: '병의원',
     emoji: '🏥',
     accent: '#1c66f5',
     empty: '이 시간에 진료 중인 병·의원을 찾지 못했습니다.',
+  },
+  {
+    key: 'pediatric',
+    endpoint: 'hospital',
+    qd: 'D002',
+    label: '소아',
+    emoji: '🧒',
+    accent: '#ea580c',
+    empty: '이 시간에 소아 진료가 가능한 곳을 찾지 못했습니다.',
   },
 ];
 

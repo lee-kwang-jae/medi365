@@ -14,6 +14,8 @@
 const PROXY_BASE = import.meta.env.VITE_EGEN_PROXY_BASE || '/egen';
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 5;
+/** 상류(data.go.kr)가 응답하지 않을 때 화면이 영원히 "검색 중" 에 머무는 것을 막는다 */
+const REQUEST_TIMEOUT_MS = 15_000;
 
 export const ENDPOINTS = {
   pharmacy: `${PROXY_BASE}/B552657/ErmctInsttInfoInqireService/getParmacyListInfoInqire`,
@@ -60,8 +62,25 @@ function parseItem(node, kind) {
 
 /** 공통 처리: fetch → XML 파싱 → 오류 판정. 성공 시 Document 반환 */
 async function fetchXmlDoc(url) {
-  const res = await fetch(url);
-  const raw = await res.text();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let res;
+  let raw;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+    raw = await res.text();
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new EgenError(
+        `응급의료포털이 ${REQUEST_TIMEOUT_MS / 1000}초 안에 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.`,
+        'TIMEOUT',
+      );
+    }
+    throw new EgenError(`응급의료포털에 연결하지 못했습니다: ${e.message}`, 'NETWORK');
+  } finally {
+    clearTimeout(timer);
+  }
 
   // data.go.kr 는 오류도 XML(<cmmMsgHeader>)로 돌려주므로 상태 코드보다 본문이 유용하다
   const doc = new DOMParser().parseFromString(raw, 'text/xml');
@@ -91,7 +110,7 @@ async function fetchXmlDoc(url) {
   return doc;
 }
 
-async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
+async function requestPage({ kind, q0, q1, dayCode, qd, pageNo }) {
   const params = new URLSearchParams({
     Q0: q0,
     ORD: 'NAME',
@@ -101,6 +120,8 @@ async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
   if (q1) params.set('Q1', q1);
   // dayCode 가 없으면 요일 필터 없이 전체 목록을 받는다 (명절 조인용 좌표 확보 목적)
   if (dayCode != null) params.set('QT', String(dayCode)); // 1=월 … 7=일, 8=공휴일
+  // 진료과목. 응답에 진료과목 필드가 없어 이 필터는 서버에서만 걸 수 있다
+  if (qd) params.set('QD', qd);
 
   const doc = await fetchXmlDoc(`${ENDPOINTS[kind]}?${params.toString()}`);
   const nodes = Array.from(doc.getElementsByTagName('item'));
@@ -109,15 +130,15 @@ async function requestPage({ kind, q0, q1, dayCode, pageNo }) {
 }
 
 /** 한 개 시군구(또는 시도 전체)에 대해 전체 페이지를 수집 */
-async function fetchRegion({ kind, q0, q1, dayCode }) {
-  const first = await requestPage({ kind, q0, q1, dayCode, pageNo: 1 });
+async function fetchRegion({ kind, q0, q1, dayCode, qd }) {
+  const first = await requestPage({ kind, q0, q1, dayCode, qd, pageNo: 1 });
   const collected = [...first.items];
 
   const totalPages = Math.min(MAX_PAGES, Math.ceil(first.totalCount / PAGE_SIZE) || 1);
   if (totalPages > 1) {
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, i) =>
-        requestPage({ kind, q0, q1, dayCode, pageNo: i + 2 }).catch(() => ({ items: [] })),
+        requestPage({ kind, q0, q1, dayCode, qd, pageNo: i + 2 }).catch(() => ({ items: [] })),
       ),
     );
     rest.forEach((page) => collected.push(...page.items));
@@ -133,11 +154,12 @@ async function fetchRegion({ kind, q0, q1, dayCode }) {
  * @param {Array<{q0:string, q1?:string}>} regions
  * @param {number[]|null} dayCodes E-Gen 요일 코드 목록 (공휴일이면 [8, 실제요일]).
  *                                  null 이면 요일 필터 없이 전체를 받는다.
+ * @param {string} [qd] 진료과목 코드 (예: D002 = 소아청소년과)
  */
-export async function fetchFacilities(kind, regions, dayCodes) {
+export async function fetchFacilities(kind, regions, dayCodes, qd) {
   const codes = dayCodes?.length ? dayCodes : [null];
   const jobs = regions.flatMap((r) =>
-    codes.map((dayCode) => fetchRegion({ kind, q0: r.q0, q1: r.q1, dayCode })),
+    codes.map((dayCode) => fetchRegion({ kind, q0: r.q0, q1: r.q1, dayCode, qd })),
   );
   const results = await Promise.allSettled(jobs);
 
