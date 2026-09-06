@@ -47,8 +47,7 @@ export default function PlaceDetail({ item, kind, accent, onClose }) {
     content.className = 'mk-anchor';
     content.innerHTML =
       `<div class="mk is-selected" style="--mk-color:${accent}">` +
-      '<div class="mk__tail"></div>' +
-      `<div class="mk__head"><span class="mk__icon">${PIN_EMOJI[kind] ?? PIN_EMOJI.hospital}</span></div>` +
+      `<div class="mk__body"><span class="mk__icon">${PIN_EMOJI[kind] ?? PIN_EMOJI.hospital}</span></div>` +
       '</div>';
 
     const overlay = new kakao.maps.CustomOverlay({

@@ -41,9 +41,7 @@ function createMarkerElement({ item, kind, color, onToggle }) {
   mk.setAttribute('tabindex', '0');
   mk.setAttribute('aria-label', item.name);
   mk.title = item.name;
-  mk.innerHTML =
-    '<div class="mk__tail"></div>' +
-    `<div class="mk__head"><span class="mk__icon">${PIN_EMOJI[kind] ?? PIN_EMOJI.hospital}</span></div>`;
+  mk.innerHTML = `<div class="mk__body"><span class="mk__icon">${PIN_EMOJI[kind] ?? PIN_EMOJI.hospital}</span></div>`;
 
   const activate = (e) => {
     // 지도의 click 핸들러(선택 해제)까지 올라가지 않게 막는다
