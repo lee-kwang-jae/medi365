@@ -21,7 +21,9 @@ const OUT_DIR = path.join(ROOT, 'public', 'data');
 
 /** 격자 크기(도). 0.1도 ≈ 위도 11km / 경도 9km */
 export const GRID = 0.1;
-export const gridKey = (lat, lng) => `${Math.floor(lat / GRID)}_${Math.floor(lng / GRID)}`;
+// 1e-9 보정: 37.4/0.1 이 373.9999… 로 떨어지는 부동소수점 오차를 막는다
+export const gridKey = (lat, lng) =>
+  `${Math.floor(lat / GRID + 1e-9)}_${Math.floor(lng / GRID + 1e-9)}`;
 
 const SIDO = [
   '서울특별시', '부산광역시', '대구광역시', '인천광역시', '광주광역시', '대전광역시',
@@ -285,11 +287,28 @@ async function run() {
   summary.cells = summary.cells || {};
   summary.kinds = summary.kinds || {};
 
+  /*
+   * 커버리지는 격자가 아니라 **시군구** 로 기록한다.
+   * 격자 하나가 11km x 9km 라 시군구 여러 개에 걸친다. 하남시만 수집하면 그 격자 파일은
+   * 존재하지만 이웃 강동구 데이터가 빠진 반쪽이 된다. 격자 존재 여부로 판정하면 앱이
+   * "수집됨" 으로 오인해 조용히 누락된다.
+   */
   for (const [kind, rows] of Object.entries(collected)) {
     const cells = writeBuckets(kind, rows, partial);
     summary.cells[kind] = cells;
     summary.kinds[kind] = { cells: cells.length, lastAdded: rows.length, region: label };
     console.log(`[${kind}] 격자 ${cells.length}개`);
+  }
+
+  if (partial) {
+    const added = onlySigungu
+      ? [`${onlySido}|${onlySigungu}`]
+      : sidoList.map((sido) => `${sido}|*`); // 시도 전체 수집
+    summary.complete = false;
+    summary.regions = [...new Set([...(summary.regions || []), ...added])].sort();
+  } else {
+    summary.complete = true; // 전국 수집 → 어디든 정적 데이터로 답할 수 있다
+    summary.regions = [];
   }
 
   if (pediatricIds) {

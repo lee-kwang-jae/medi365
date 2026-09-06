@@ -12,7 +12,10 @@ import { offsetLatLng } from './geo.js';
 const BASE = `${import.meta.env.BASE_URL || '/'}data`.replace(/\/{2,}/g, '/');
 export const GRID = 0.1;
 
-const gridKey = (lat, lng) => `${Math.floor(lat / GRID)}_${Math.floor(lng / GRID)}`;
+// 1e-9 보정: 37.4/0.1 이 373.9999… 로 떨어지는 부동소수점 오차를 막는다.
+// scripts/fetch-data.mjs 의 gridKey 와 반드시 같은 식이어야 한다.
+const gridKey = (lat, lng) =>
+  `${Math.floor(lat / GRID + 1e-9)}_${Math.floor(lng / GRID + 1e-9)}`;
 
 /** 수집기가 만든 배열의 컬럼 순서 (scripts/fetch-data.mjs 의 parseItems 와 짝) */
 const F = {
@@ -115,17 +118,23 @@ async function loadCell(kind, key) {
  *
  * @returns {Promise<Array|null>} 데이터셋이 없거나 범위 밖이면 null
  */
-export async function loadFromDataset(kind, center, radiusKm) {
+export async function loadFromDataset(kind, center, radiusKm, regions) {
   const index = await loadIndex();
   if (!index) return null;
+  if (!index.cells?.[kind]?.length) return null;
 
-  const covered = index.cells?.[kind];
-  if (!Array.isArray(covered) || covered.length === 0) return null;
+  if (!index.complete) {
+    // 부분 수집 상태 — 검색 반경에 걸친 시군구가 **모두** 수집됐을 때만 정적 데이터를 쓴다.
+    // 격자 존재 여부로 판정하면 안 된다(위 주석 참고).
+    if (!regions?.length) return null;
+    const collected = new Set(index.regions || []);
+    const ok = regions.every(
+      (r) => collected.has(`${r.q0}|${r.q1}`) || collected.has(`${r.q0}|*`),
+    );
+    if (!ok) return null;
+  }
 
   const cells = cellsForRadius(center, radiusKm);
-  const coveredSet = new Set(covered);
-  if (!cells.every((key) => coveredSet.has(key))) return null;
-
   const chunks = await Promise.all(cells.map((key) => loadCell(kind, key)));
 
   const merged = new Map();

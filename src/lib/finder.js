@@ -1,6 +1,6 @@
 import { coordToRegion } from './kakao.js';
 import { fetchFacilities, fetchHolidayClinics } from './egen.js';
-import { loadFromDataset, loadPediatricSet } from './dataset.js';
+import { loadFromDataset, loadPediatricSet, loadIndex } from './dataset.js';
 import { haversineKm, offsetLatLng } from './geo.js';
 import {
   getDayCode,
@@ -76,8 +76,8 @@ async function filterPediatric(items, variants) {
  * 상류(E-Gen)를 타지 않으므로 장애의 영향을 받지 않고 응답도 빠르다.
  * @returns {Promise<object|null>} 데이터셋이 없으면 null → 호출부가 API 로 폴백
  */
-async function loadCandidates({ kind, variants, datasetFilter, center, radiusKm }) {
-  const rows = await loadFromDataset(kind, center, radiusKm);
+async function loadCandidates({ kind, variants, datasetFilter, center, radiusKm, regions }) {
+  const rows = await loadFromDataset(kind, center, radiusKm, regions);
   if (!rows) return null;
 
   const items = datasetFilter === 'pediatric' ? await filterPediatric(rows, variants) : rows;
@@ -118,11 +118,19 @@ export async function findOpenFacilities({
 
   const compactDate = toCompactDate(now);
 
-  // 1순위: 미리 수집해 둔 정적 데이터셋. 없으면 실시간 API 로 폴백한다.
-  let raw = await loadCandidates({ kind, variants, datasetFilter, center, radiusKm });
-  let regions = [];
+  /*
+   * 1순위는 미리 수집해 둔 정적 데이터셋.
+   * 전국 수집이 끝나기 전(index.complete=false)에는 검색 반경에 걸친 시군구가 모두
+   * 수집됐는지 확인해야 하므로 행정구역을 먼저 구한다. 전국 수집이 끝나면 이 단계가
+   * 필요 없어져 카카오 호출도 사라진다.
+   */
+  const index = await loadIndex();
+  let regions = index && !index.complete ? await resolveRegions(center, radiusKm) : [];
+
+  let raw = await loadCandidates({ kind, variants, datasetFilter, center, radiusKm, regions });
+
   if (!raw) {
-    regions = await resolveRegions(center, radiusKm);
+    if (!regions.length) regions = await resolveRegions(center, radiusKm);
     if (!regions.length) {
       throw new Error('검색 위치의 행정구역을 확인하지 못했습니다. 다른 지역명으로 시도해 보세요.');
     }
