@@ -171,6 +171,7 @@ export default function App() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               accent={activeTab.accent}
+              kind={tab}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-slate-400">

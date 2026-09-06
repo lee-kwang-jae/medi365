@@ -9,11 +9,27 @@ const escapeHtml = (value = '') =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
 
-/** 색상만 다른 SVG 핀 마커 이미지 */
-function pinImage(kakao, color) {
+/**
+ * 종류별 핀 마커 이미지.
+ *   약국   → 흰 알약(캡슐)
+ *   병·의원 → 흰 십자(+)
+ * 핀 머리 중심은 (15, 14.5) 기준으로 그린다.
+ */
+const PIN_GLYPH = {
+  pharmacy: (color) => `
+    <g transform="rotate(-35 15 14.5)">
+      <rect x="8.5" y="11" width="13" height="7" rx="3.5" fill="#fff"/>
+      <line x1="15" y1="11" x2="15" y2="18" stroke="${color}" stroke-width="1.3"/>
+    </g>`,
+  hospital: () => `
+    <path d="M13.6 9.5h2.8v3.6h3.6v2.8h-3.6v3.6h-2.8v-3.6h-3.6v-2.8h3.6z" fill="#fff"/>`,
+};
+
+function pinImage(kakao, color, kind) {
+  const glyph = (PIN_GLYPH[kind] ?? PIN_GLYPH.hospital)(color);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40">
     <path d="M15 0C6.7 0 0 6.7 0 15c0 10.5 13.2 23.6 13.8 24.2a1.7 1.7 0 0 0 2.4 0C16.8 38.6 30 25.5 30 15 30 6.7 23.3 0 15 0z" fill="${color}"/>
-    <circle cx="15" cy="14.5" r="5.6" fill="#fff"/>
+    ${glyph}
   </svg>`;
   return new kakao.maps.MarkerImage(
     `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
@@ -46,7 +62,7 @@ function infoWindowHtml(item) {
     </div>`;
 }
 
-export default function KakaoMap({ center, centerLabel, items, selectedId, onSelect, accent }) {
+export default function KakaoMap({ center, centerLabel, items, selectedId, onSelect, accent, kind }) {
   const boxRef = useRef(null);
   const mapRef = useRef(null);
   const infoRef = useRef(null);
@@ -146,7 +162,7 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = new Map();
 
-    const image = pinImage(kakao, accent);
+    const image = pinImage(kakao, accent, kind);
     items.forEach((item) => {
       const marker = new kakao.maps.Marker({
         map,
@@ -174,7 +190,7 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, accent]);
+  }, [items, accent, kind]);
 
   /* 선택 항목: panTo + 인포윈도우 */
   useEffect(() => {
