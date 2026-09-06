@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-slate-100 text-slate-900 antialiased;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+      'Malgun Gothic', system-ui, sans-serif;
+    word-break: keep-all;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold
+           transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+  .btn-ghost {
+    @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold;
+  }
+}
+
+/* 카카오 기본 인포윈도우 꼬리/테두리 톤 정리 */
+.kakao-iw {
+  @apply min-w-[200px] max-w-[260px] p-3 text-[13px] leading-relaxed;
+}
+
+/* 스크롤바 */
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
+}

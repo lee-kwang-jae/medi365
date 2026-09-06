@@ -1,0 +1,3 @@
+{
+  "rewrites": [{ "source": "/egen/(.*)", "destination": "/api/egen?path=$1" }]
+}
