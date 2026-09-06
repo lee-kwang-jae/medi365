@@ -37,7 +37,6 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   // 상세 시트에 띄울 장소. 시트를 닫아도 지도 위 선택(마커 상태 B)은 유지한다.
   const [detailId, setDetailId] = useState(null);
-  const [includeUnknown, setIncludeUnknown] = useState(false);
   const [clock, setClock] = useState(() => new Date());
   // 상류가 일시적으로 실패했을 때 사용자가 직접 재조회할 수 있게 하는 트리거
   const [retryKey, setRetryKey] = useState(0);
@@ -232,8 +231,8 @@ export default function App() {
   const visibleItems = useMemo(() => {
     // 카카오 대체 경로는 영업시간 자체가 없다. 걸러내면 아무것도 안 남으므로 전부 보여준다.
     if (stats?.source === 'kakao') return items;
-    return items.filter((it) => it.isOpen || (includeUnknown && it.unknownHours));
-  }, [items, includeUnknown, stats?.source]);
+    return items.filter((it) => it.isOpen);
+  }, [items, stats?.source]);
 
   if (sdkError) {
     return (
@@ -280,7 +279,7 @@ export default function App() {
         <section
           aria-label="지도"
           className="relative order-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card
-                     max-lg:h-[52vh] max-lg:[@supports(height:1dvh)]:h-[52dvh]
+                     max-lg:h-[calc(52vh+26px)] max-lg:[@supports(height:1dvh)]:h-[calc(52dvh+26px)]
                      lg:order-2 lg:h-full"
         >
           {sdkReady ? (
@@ -406,15 +405,6 @@ export default function App() {
               </p>
             )}
 
-            <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs text-slate-600">
-              <input
-                type="checkbox"
-                checked={includeUnknown}
-                onChange={(e) => setIncludeUnknown(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
-              />
-              영업시간 미등록({stats?.unknown ?? 0}곳)도 함께 표시
-            </label>
           </div>
 
           {notice && (
