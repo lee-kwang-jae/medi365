@@ -1,4 +1,4 @@
-import { coordToRegion } from './kakao.js';
+import { coordToRegion, searchNearby } from './kakao.js';
 import { fetchFacilities, fetchHolidayClinics } from './egen.js';
 import { loadFromDataset, loadPediatricSet } from './dataset.js';
 import { haversineKm, offsetLatLng } from './geo.js';
@@ -130,6 +130,15 @@ export async function collectHolidayMap({
   if (!isHolidaySeason(now)) return new Map();
   const rs = regions?.length ? regions : await resolveRegions(center, radiusKm);
   return fetchHolidayClinics(rs, toCompactDate(now)).catch(() => new Map());
+}
+
+/**
+ * 최후 수단: 카카오 장소 검색.
+ * 정적 데이터도 없고 응급의료포털도 죽었을 때만 쓴다.
+ * 영업시간이 없어 '지금 문 연 곳' 을 가릴 수 없다는 점을 호출부가 사용자에게 알려야 한다.
+ */
+export async function collectFromKakao({ kind, center, radiusKm = SEARCH_RADIUS_KM }) {
+  return searchNearby(kind, center, radiusKm);
 }
 
 /* ── 판정: 시각 필터 · 반경 필터 · 정렬 ─────────────────────────────── */

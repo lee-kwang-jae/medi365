@@ -146,3 +146,70 @@ export const kakaoLinks = {
   map: (name, lat, lng) => `https://map.kakao.com/link/map/${encodeURIComponent(name)},${lat},${lng}`,
   to: (name, lat, lng) => `https://map.kakao.com/link/to/${encodeURIComponent(name)},${lat},${lng}`,
 };
+
+/* ──────────────────────────────────────────────────────────────
+ * 최후 수단: 카카오 장소 검색으로 주변 약국·병원 찾기
+ *
+ * 응급의료포털이 죽고 정적 데이터도 없을 때 쓴다. 카카오에는 **영업시간이 없어서**
+ * '지금 문 연 곳' 을 가릴 수 없다. 대신 위치·전화번호는 나오므로 전화로 확인할 수 있다.
+ * 아무것도 못 보여주는 것보다 낫다는 판단이다.
+ *
+ * 한 번에 최대 45곳(15개 × 3페이지)까지만 받을 수 있는 API 제약이 있다.
+ * 거리순으로 받으므로 가까운 곳부터 채워진다.
+ * ────────────────────────────────────────────────────────────── */
+
+const CATEGORY = { pharmacy: 'PM9', hospital: 'HP8', pediatric: 'HP8' };
+const MAX_PAGES = 3;
+
+function categoryPage(places, code, options, page) {
+  return new Promise((resolve) => {
+    places.categorySearch(
+      code,
+      (data, status) => resolve(status === services().Status.OK ? data : []),
+      { ...options, page },
+    );
+  });
+}
+
+/**
+ * @param {'pharmacy'|'hospital'|'pediatric'} kind
+ * @returns {Promise<Array>} 앱 내부 모델 (영업시간 없음)
+ */
+export async function searchNearby(kind, center, radiusKm) {
+  await loadKakaoSdk();
+  const places = new (services().Places)();
+  const options = {
+    location: new window.kakao.maps.LatLng(center.lat, center.lng),
+    radius: Math.min(20000, Math.round(radiusKm * 1000)), // 카카오 제한 20km
+    sort: services().SortBy.DISTANCE,
+    size: 15,
+  };
+
+  const code = CATEGORY[kind] ?? CATEGORY.hospital;
+  const pages = await Promise.all(
+    Array.from({ length: MAX_PAGES }, (_, i) => categoryPage(places, code, options, i + 1)),
+  );
+
+  const seen = new Set();
+  const items = [];
+  pages.flat().forEach((p) => {
+    if (seen.has(p.id)) return;
+    seen.add(p.id);
+    items.push({
+      id: `kakao:${p.id}`,
+      kind,
+      name: p.place_name,
+      address: p.road_address_name || p.address_name,
+      tel: p.phone || '',
+      // '음식점 > ...' 처럼 계층으로 오므로 마지막 조각만 쓴다
+      division: (p.category_name || '').split('>').pop().trim(),
+      emergency: '',
+      etc: '',
+      lat: Number(p.y),
+      lng: Number(p.x),
+      placeUrl: p.place_url,
+      fromKakao: true, // 영업시간 없음을 표시하기 위한 표식
+    });
+  });
+  return items;
+}

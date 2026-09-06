@@ -11,6 +11,7 @@ import {
   collectFromDataset,
   collectFromApi,
   collectHolidayMap,
+  collectFromKakao,
   evaluate,
   mergeRows,
 } from './lib/finder.js';
@@ -141,11 +142,31 @@ export default function App() {
         if (isStale()) return;
         if (datasetRows?.length) {
           setApiError(e.message); // 정적 결과는 유지한 채 통신 오류만 알린다
-        } else {
-          setItems([]);
-          setStats(null);
-          setError(e.message);
+          return;
         }
+
+        /*
+         * 정적 데이터도 없고 응급의료포털도 죽었다 → 카카오 장소 검색으로라도 보여준다.
+         * 영업시간을 알 수 없으므로 '지금 문 연 곳' 은 가릴 수 없다. 화면에 그렇게 알린다.
+         * 아무것도 못 보여주는 것보다는 위치·전화번호라도 있는 편이 낫다.
+         */
+        try {
+          const nearby = await collectFromKakao(params);
+          if (isStale()) return;
+          if (nearby.length) {
+            const { items: shown, stats: s } = evaluate({ rows: nearby, center, now });
+            setItems(shown);
+            setStats({ ...s, source: 'kakao' });
+            setApiError(e.message);
+            return;
+          }
+        } catch {
+          /* 카카오까지 실패하면 아래 전체 오류로 넘어간다 */
+        }
+
+        setItems([]);
+        setStats(null);
+        setError(e.message);
       } finally {
         if (!isStale()) setLoading(false);
       }
@@ -190,10 +211,11 @@ export default function App() {
   }, []);
 
   /* 표시 대상: 지금 영업중 (+옵션에 따라 시간 미등록 포함) */
-  const visibleItems = useMemo(
-    () => items.filter((it) => it.isOpen || (includeUnknown && it.unknownHours)),
-    [items, includeUnknown],
-  );
+  const visibleItems = useMemo(() => {
+    // 카카오 대체 경로는 영업시간 자체가 없다. 걸러내면 아무것도 안 남으므로 전부 보여준다.
+    if (stats?.source === 'kakao') return items;
+    return items.filter((it) => it.isOpen || (includeUnknown && it.unknownHours));
+  }, [items, includeUnknown, stats?.source]);
 
   if (sdkError) {
     return (
@@ -321,9 +343,25 @@ export default function App() {
               {stats?.source === 'dataset' && (
                 <span className="ml-1 text-slate-400">· 저장된 자료</span>
               )}
+              {stats?.source === 'kakao' && (
+                <span className="ml-1 font-semibold text-amber-700">· 카카오맵 기준</span>
+              )}
             </p>
 
-            {apiError && (
+            {stats?.source === 'kakao' && (
+              <div className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900 ring-1 ring-amber-300">
+                <p className="font-bold">⚠ 영업시간을 확인할 수 없습니다</p>
+                <p className="mt-0.5 leading-relaxed">
+                  응급의료포털이 응답하지 않아 <b>카카오맵 기준 주변 목록</b>을 표시합니다. 지금 문을
+                  열었는지는 알 수 없으니 <b>방문 전 전화로 확인</b>해 주세요.
+                </p>
+                <button type="button" onClick={handleRetry} className="btn-ghost mt-2 h-9 w-full text-xs">
+                  ↻ 다시 시도
+                </button>
+              </div>
+            )}
+
+            {apiError && stats?.source !== 'kakao' && (
               <div className="mt-2 rounded-lg bg-rose-50 px-2.5 py-2 text-xs text-rose-800 ring-1 ring-rose-200">
                 <p className="font-bold">⚠ 통신 오류</p>
                 <p className="mt-0.5 leading-relaxed">{apiError}</p>

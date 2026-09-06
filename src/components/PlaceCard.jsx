@@ -22,6 +22,8 @@ async function openInKakaoMap(item) {
 }
 
 function StatusChip({ item }) {
+  // 카카오 장소 검색 결과는 영업시간 자체가 없다. '영업 종료' 로 보이면 오해를 준다.
+  if (item.fromKakao) return <span className="chip bg-amber-100 text-amber-800">영업시간 확인 불가</span>;
   if (item.isOpen) return <span className="chip bg-emerald-100 text-emerald-700">● 지금 영업중</span>;
   if (item.unknownHours) return <span className="chip bg-amber-100 text-amber-700">시간 정보 없음</span>;
   return <span className="chip bg-slate-100 text-slate-500">영업 종료</span>;
