@@ -75,11 +75,12 @@ export default function App() {
   }, [sdkReady, center]);
 
   /*
-   * 검색 파이프라인 — 두 경로를 합친다.
-   *  1) 정적 데이터셋: 미리 받아둔 파일. 상류와 무관하고 즉시 뜬다. 있으면 바로 표시한다.
-   *  2) 실시간 API  : 아직 수집하지 않은 지역과 최신 변경분을 메운다.
-   * 폴백이 아니라 합집합이라, API 가 죽어도 정적 데이터는 그대로 보인다.
-   * API 실패는 결과를 지우지 않고 화면에 따로 알린다.
+   * 검색 파이프라인 — 기다리게 두지 않는다.
+   *  1) 정적 데이터셋: 있으면 즉시 표시
+   *  2) 실시간 API  : 병렬로 시작. 도착하면 합쳐서 갱신
+   *  3) 12초 안에 아무것도 못 보여주면 카카오 주변 목록으로 먼저 채운다.
+   *     그 뒤에 API 가 도착하면 정식 결과로 교체한다.
+   * 상류가 죽어 있어도 사용자는 12초 안에 무언가를 본다.
    */
   useEffect(() => {
     if (!sdkReady) return;
@@ -101,75 +102,92 @@ export default function App() {
       radiusKm: SEARCH_RADIUS_KM,
       now,
     };
+
     let datasetRows = null;
+    let shownSomething = false;
+
+    const show = (rows, source, extra = {}) => {
+      if (isStale()) return;
+      const { items: list, stats: s } = evaluate({ rows, center, now, ...extra });
+      setItems(list);
+      setStats({ ...s, source });
+      setLoading(false);
+      shownSomething = true;
+    };
+
+    // API 는 바로 시작해 두고, 기다리는 동안 다른 경로로 화면을 채운다
+    const apiPromise = collectFromApi(params).then(
+      (r) => ({ ok: true, ...r }),
+      (e) => ({ ok: false, error: e }),
+    );
 
     (async () => {
-      // 1) 정적 데이터셋 — 있으면 기다리지 않고 먼저 그린다
+      // 1) 정적 데이터셋
       try {
         datasetRows = await collectFromDataset(params);
         if (isStale()) return;
-        if (datasetRows?.length) {
-          const { items: shown, stats: s } = evaluate({ rows: datasetRows, center, now });
-          setItems(shown);
-          setStats({ ...s, source: 'dataset' });
-          setLoading(false); // 결과가 이미 보이므로 스켈레톤을 걷는다
-        }
+        if (datasetRows?.length) show(datasetRows, 'dataset');
       } catch {
-        datasetRows = null; // 정적 경로 실패는 조용히 넘기고 API 로 진행
+        datasetRows = null;
       }
 
-      // 2) 실시간 API — 성공하면 합치고, 실패하면 알리기만 한다
-      try {
-        const api = await collectFromApi(params);
-        if (isStale()) return;
+      // 2) API 를 기다리되, 12초를 넘기면 먼저 카카오로 채운다
+      const TIMEOUT = Symbol('timeout');
+      const raced = await Promise.race([
+        apiPromise,
+        new Promise((r) => setTimeout(() => r(TIMEOUT), 12000)),
+      ]);
+      if (isStale()) return;
+
+      if (raced === TIMEOUT) {
+        if (!shownSomething) {
+          try {
+            const nearby = await collectFromKakao(params);
+            if (isStale()) return;
+            if (nearby.length) show(nearby, 'kakao');
+          } catch {
+            /* 카카오까지 안 되면 아래에서 API 최종 결과를 기다린다 */
+          }
+        }
+      }
+
+      // 3) API 최종 결과 반영
+      const api = await apiPromise;
+      if (isStale()) return;
+
+      if (api.ok) {
         const holidayMap = await collectHolidayMap({ ...params, regions: api.regions });
         if (isStale()) return;
-
-        const { items: shown, stats: s } = evaluate({
-          rows: mergeRows(datasetRows, api.items),
-          center,
-          now,
+        show(mergeRows(datasetRows, api.items), datasetRows?.length ? 'both' : 'api', {
           holidayMap,
         });
-        setItems(shown);
-        setStats({
-          ...s,
-          source: datasetRows?.length ? 'both' : 'api',
-          failedRegions: api.failed,
-          totalRegions: api.total,
-        });
-      } catch (e) {
+        setApiError(null);
+        return;
+      }
+
+      // API 실패 — 이미 뭔가 보여주고 있으면 알리기만 한다
+      if (shownSomething) {
+        setApiError(api.error.message);
+        setLoading(false);
+        return;
+      }
+
+      // 아무것도 못 보여준 상태 → 카카오를 마지막으로 한 번 더 시도
+      try {
+        const nearby = await collectFromKakao(params);
         if (isStale()) return;
-        if (datasetRows?.length) {
-          setApiError(e.message); // 정적 결과는 유지한 채 통신 오류만 알린다
+        if (nearby.length) {
+          show(nearby, 'kakao');
+          setApiError(api.error.message);
           return;
         }
-
-        /*
-         * 정적 데이터도 없고 응급의료포털도 죽었다 → 카카오 장소 검색으로라도 보여준다.
-         * 영업시간을 알 수 없으므로 '지금 문 연 곳' 은 가릴 수 없다. 화면에 그렇게 알린다.
-         * 아무것도 못 보여주는 것보다는 위치·전화번호라도 있는 편이 낫다.
-         */
-        try {
-          const nearby = await collectFromKakao(params);
-          if (isStale()) return;
-          if (nearby.length) {
-            const { items: shown, stats: s } = evaluate({ rows: nearby, center, now });
-            setItems(shown);
-            setStats({ ...s, source: 'kakao' });
-            setApiError(e.message);
-            return;
-          }
-        } catch {
-          /* 카카오까지 실패하면 아래 전체 오류로 넘어간다 */
-        }
-
-        setItems([]);
-        setStats(null);
-        setError(e.message);
-      } finally {
-        if (!isStale()) setLoading(false);
+      } catch {
+        /* 아래 전체 오류로 */
       }
+      setItems([]);
+      setStats(null);
+      setError(api.error.message);
+      setLoading(false);
     })();
   }, [sdkReady, tab, center, retryKey, activeTab]);
 

@@ -42,6 +42,18 @@ export function loadKakaoSdk() {
 const services = () => window.kakao.maps.services;
 
 /**
+ * 카카오 SDK 는 콜백 기반이라, 콜백이 오지 않으면 Promise 가 영원히 매달린다.
+ * 그러면 화면이 '검색 중' 에서 빠져나오지 못한다. 모든 호출에 상한을 둔다.
+ */
+const KAKAO_TIMEOUT_MS = 8000;
+function withTimeout(promise, fallback = null, ms = KAKAO_TIMEOUT_MS) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+/**
  * 키워드/주소 검색으로 지역 대표 좌표를 얻는다.
  *   1) 주소 검색(Geocoder.addressSearch) — "서울시 강남구 역삼동" 같은 행정구역명에 강함
  *   2) 실패 시 키워드 검색(Places.keywordSearch)
@@ -62,7 +74,7 @@ export async function searchLocation(query) {
 }
 
 function addressSearch(keyword) {
-  return new Promise((resolve) => {
+  return withTimeout(new Promise((resolve) => {
     new (services().Geocoder)().addressSearch(keyword, (result, status) => {
       if (status !== services().Status.OK || !result.length) return resolve(null);
       const top = result[0];
@@ -73,11 +85,11 @@ function addressSearch(keyword) {
         addressName: top.address_name,
       });
     });
-  });
+  }));
 }
 
 function keywordSearch(keyword) {
-  return new Promise((resolve) => {
+  return withTimeout(new Promise((resolve) => {
     new (services().Places)().keywordSearch(keyword, (data, status) => {
       if (status !== services().Status.OK || !data.length) return resolve(null);
       const top = data[0];
@@ -89,7 +101,7 @@ function keywordSearch(keyword) {
         placeUrl: top.place_url,
       });
     });
-  });
+  }));
 }
 
 /**
@@ -97,7 +109,7 @@ function keywordSearch(keyword) {
  * @returns {Promise<{q0:string, q1:string, label:string}|null>}
  */
 export function coordToRegion({ lat, lng }) {
-  return new Promise((resolve) => {
+  return withTimeout(new Promise((resolve) => {
     new (services().Geocoder)().coord2RegionCode(lng, lat, (result, status) => {
       if (status !== services().Status.OK || !result.length) return resolve(null);
       const region = result.find((r) => r.region_type === 'H') || result[0];
@@ -114,7 +126,7 @@ export function coordToRegion({ lat, lng }) {
           .join(' '),
       });
     });
-  });
+  }));
 }
 
 /**
@@ -162,13 +174,13 @@ const CATEGORY = { pharmacy: 'PM9', hospital: 'HP8', pediatric: 'HP8' };
 const MAX_PAGES = 3;
 
 function categoryPage(places, code, options, page) {
-  return new Promise((resolve) => {
+  return withTimeout(new Promise((resolve) => {
     places.categorySearch(
       code,
       (data, status) => resolve(status === services().Status.OK ? data : []),
       { ...options, page },
     );
-  });
+  }), []);
 }
 
 /**
