@@ -16,17 +16,22 @@ import {
   mergeRows,
 } from './lib/finder.js';
 import { PAGE_SIZE, SEARCH_RADIUS_KM, TABS } from './lib/constants.js';
+import { readUrlState, writeUrlState } from './lib/urlState.js';
 import { nowLabel } from './lib/time.js';
 
 export default function App() {
   const { ready: sdkReady, error: sdkError } = useKakaoSdk();
   const { locate, locating } = useGeolocation();
 
-  const [tab, setTab] = useState('pharmacy');
+  // 주소창에 남은 직전 검색을 그대로 이어받는다. 카카오맵에 갔다 돌아왔을 때
+  // 페이지가 새로 뜨더라도 보던 목록이 살아있게 하는 것이 목적이다.
+  const initial = useRef(readUrlState()).current;
+
+  const [tab, setTab] = useState(initial.tab);
   // 검색 기준 위치. 현재 위치를 얻거나 사용자가 검색하기 전까지는 없다(null).
   // 임의의 기본 지역을 넣으면 엉뚱한 동네 결과를 내 위치인 양 보여주게 된다.
-  const [center, setCenter] = useState(null);
-  const [centerLabel, setCenterLabel] = useState('');
+  const [center, setCenter] = useState(initial.center);
+  const [centerLabel, setCenterLabel] = useState(initial.centerLabel);
   const [regionLabel, setRegionLabel] = useState('');
 
   const [items, setItems] = useState([]);
@@ -59,7 +64,9 @@ export default function App() {
 
   /* 최초 로딩: 현재 위치를 기준으로 시작한다 */
   useEffect(() => {
-    if (!sdkReady || geoTriedRef.current) return;
+    // 복원된 검색이 있으면 현재 위치로 덮어쓰지 않는다. 사용자가 보고 있던 지역이
+    // 우선이고, 내 위치는 '내 위치' 버튼으로 언제든 다시 잡을 수 있다.
+    if (!sdkReady || geoTriedRef.current || initial.center) return;
     geoTriedRef.current = true;
     locate()
       .then((pos) => {
@@ -67,7 +74,12 @@ export default function App() {
         setCenterLabel('현재 위치');
       })
       .catch((e) => setNotice(e.message));
-  }, [sdkReady, locate]);
+  }, [sdkReady, locate, initial.center]);
+
+  /* 검색 상태를 주소창에 반영 — 이 URL 하나면 같은 화면이 복원된다 */
+  useEffect(() => {
+    writeUrlState({ center, centerLabel, tab });
+  }, [center, centerLabel, tab]);
 
   /* 중심 좌표의 행정구역 라벨 */
   useEffect(() => {

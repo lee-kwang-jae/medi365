@@ -27,7 +27,10 @@
             if (!el || (el.tagName !== 'SCRIPT' && el.tagName !== 'LINK')) return;
             if (sessionStorage.getItem(KEY)) return;
             try { sessionStorage.setItem(KEY, '1'); } catch (_) {}
-            location.replace(location.pathname + '?v=' + Date.now());
+            // 검색 상태가 주소창에 들어 있다. 새로고침하면서 지우면 안 된다.
+            var u = new URL(location.href);
+            u.searchParams.set('v', Date.now());
+            location.replace(u.pathname + u.search);
           },
           true,
         );
