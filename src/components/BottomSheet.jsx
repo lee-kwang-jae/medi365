@@ -20,12 +20,21 @@ const ORDER = ['peek', 'open'];
 const MIN_RATIO = 0.08;
 const MAX_RATIO = 0.45;
 
+/**
+ * expanded(목록만 보기)에서 드래그로 빠져나오는 문턱.
+ * 이 비율 아래로 내리면 목록 전용 보기를 끝내고 open 으로 돌아간다.
+ */
+const EXPANDED_EXIT_RATIO = 0.8;
+
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export default function BottomSheet({
   enabled,
   snap,
   onSnapChange,
+  /** 목록만 보기 — 스냅 단계와 별개로 시트가 화면을 가득 채운다 */
+  expanded = false,
+  onExpandedChange,
   label = '목록',
   desktopClassName = '',
   children,
@@ -42,19 +51,24 @@ export default function BottomSheet({
     [parentHeight],
   );
 
+  const targetHeight = useCallback(
+    () => (expanded ? parentHeight() : heightFor(snap)),
+    [expanded, parentHeight, heightFor, snap],
+  );
+
   /* 스냅 상태 → 실제 높이. 드래그 중에는 아래 핸들러가 직접 높이를 쓰므로 건드리지 않는다. */
   useEffect(() => {
     const el = sheetRef.current;
     if (!enabled || !el || dragRef.current) return;
-    el.style.height = `${heightFor(snap)}px`;
-  }, [enabled, snap, heightFor]);
+    el.style.height = `${targetHeight()}px`;
+  }, [enabled, targetHeight]);
 
   /* 화면 회전·주소창 접힘으로 부모 높이가 바뀌면 비율을 다시 맞춘다 */
   useEffect(() => {
     if (!enabled) return undefined;
     const apply = () => {
       const el = sheetRef.current;
-      if (el && !dragRef.current) el.style.height = `${heightFor(snap)}px`;
+      if (el && !dragRef.current) el.style.height = `${targetHeight()}px`;
     };
     window.addEventListener('resize', apply);
     window.addEventListener('orientationchange', apply);
@@ -62,7 +76,7 @@ export default function BottomSheet({
       window.removeEventListener('resize', apply);
       window.removeEventListener('orientationchange', apply);
     };
-  }, [enabled, snap, heightFor]);
+  }, [enabled, targetHeight]);
 
   const nearestSnap = useCallback(
     (height) => {
@@ -96,8 +110,11 @@ export default function BottomSheet({
     const parent = parentHeight();
     // 손가락을 위로 올리면(clientY 감소) 시트가 커진다
     const next = drag.startHeight - (e.clientY - drag.startY);
+    // 목록만 보기에서는 상한이 화면 전체다. 평소에는 지도를 지키려고 MAX_RATIO 로 막는다.
+    const lo = parent * (expanded ? EXPANDED_EXIT_RATIO - 0.2 : MIN_RATIO);
+    const hi = parent * (expanded ? 1 : MAX_RATIO);
     // React 상태를 거치지 않는다. 프레임마다 리렌더하면 목록이 무거워 끊긴다.
-    el.style.height = `${clamp(next, parent * MIN_RATIO, parent * MAX_RATIO)}px`;
+    el.style.height = `${clamp(next, lo, hi)}px`;
   };
 
   const endDrag = (e) => {
@@ -112,7 +129,20 @@ export default function BottomSheet({
     }
     el.style.transition = ''; // 클래스에 정의된 전환으로 되돌린다
 
-    const target = nearestSnap(el.getBoundingClientRect().height);
+    const height = el.getBoundingClientRect().height;
+
+    // 목록만 보기에서는 스냅이 아니라 '계속 볼지 / 빠져나갈지' 두 갈래다
+    if (expanded) {
+      const stay = height / parentHeight() >= EXPANDED_EXIT_RATIO;
+      el.style.height = stay ? `${parentHeight()}px` : `${heightFor('open')}px`;
+      if (!stay) {
+        onExpandedChange?.(false);
+        if (snap !== 'open') onSnapChange('open');
+      }
+      return;
+    }
+
+    const target = nearestSnap(height);
     el.style.height = `${heightFor(target)}px`;
     if (target !== snap) onSnapChange(target);
   };

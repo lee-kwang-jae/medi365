@@ -60,6 +60,9 @@ export default function App() {
   const isDesktop = useIsDesktop();
   // 바텀시트 단계(모바일 전용). open 이어도 지도는 위에 남는다 — BottomSheet 주석 참고.
   const [snap, setSnap] = useState('peek');
+  // 목록만 보기. 스냅 단계와 별개다 — 드래그로는 여기까지 오지 않고, 버튼으로만 들어온다.
+  // 그래야 '지도는 늘 절반 이상 보인다'는 규칙과 부딪히지 않는다.
+  const [listOnly, setListOnly] = useState(false);
   const scrollRef = useRef(null);
 
   const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
@@ -95,6 +98,7 @@ export default function App() {
    */
   useEffect(() => {
     setSnap(center ? 'open' : 'peek');
+    setListOnly(false); // 새 검색은 지도부터 보여준다
   }, [center]);
 
   /* 중심 좌표의 행정구역 라벨 */
@@ -249,14 +253,12 @@ export default function App() {
 
   const handleRetry = useCallback(() => setRetryKey((n) => n + 1), []);
 
-  /**
-   * 지도 위 버튼에서 목록 펼치기.
-   * 예전에는 지도 아래의 목록으로 스크롤했지만, 이제 목록은 바텀시트라 시트를 올린다.
-   */
-  const expandList = useCallback(() => {
-    setSnap('open');
-    if (isDesktop) listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [isDesktop]);
+  /* 목록만 보기 진입 — 상세를 보던 중이면 목록으로 되돌린 뒤 펼친다 */
+  const showListOnly = useCallback(() => {
+    setDetailId(null);
+    setSnap('open'); // 나올 때 돌아갈 자리
+    setListOnly(true);
+  }, []);
 
   const handleShowMore = useCallback(() => setRenderLimit((n) => n + PAGE_SIZE), []);
 
@@ -469,31 +471,37 @@ export default function App() {
           </div>
 
           {/*
-            목록 펼치기. 시트를 손잡이로 끌어올릴 수도 있지만, 한 번에 열고 싶을 때가 있다.
-            시트가 이미 올라와 있으면 가려지므로 peek 일 때만 보인다.
-            bottom 값은 시트가 peek 일 때의 높이(SNAP.peek) 바로 위 — 두 값은 함께 움직인다.
+            목록만 보기. 지도 하단 중앙, 시트 바로 위에 뜬다.
+            bottom 은 현재 스냅 높이에 맞춰 따라 움직이므로 시트에 가리지 않는다.
+            시트를 z-30 으로 얹었으므로 이 버튼은 그보다 위(z-40)에 둔다.
             데스크톱(lg)은 목록이 항상 옆에 보여서 숨긴다.
           */}
-          <button
-            type="button"
-            onClick={expandList}
-            aria-label="목록 펼치기"
-            title="목록 펼치기"
-            hidden={isDesktop || snap !== 'peek'}
-            style={{ bottom: `calc(${SNAP.peek * 100}% + 12px)` }}
-            className="absolute left-1/2 z-10 flex h-11 w-11 -translate-x-1/2 items-center
-                       justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-black/10
-                       transition active:scale-95 hover:bg-slate-50 lg:hidden"
-          >
-            <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden="true" fill="currentColor">
-              <circle cx="3.2" cy="5" r="1.3" />
-              <circle cx="3.2" cy="10" r="1.3" />
-              <circle cx="3.2" cy="15" r="1.3" />
-              <rect x="6.6" y="4.1" width="10.4" height="1.8" rx="0.9" />
-              <rect x="6.6" y="9.1" width="10.4" height="1.8" rx="0.9" />
-              <rect x="6.6" y="14.1" width="10.4" height="1.8" rx="0.9" />
-            </svg>
-          </button>
+          {/*
+            hidden 속성은 쓰지 않는다 — Tailwind 의 `flex` 가 display 를 다시 켜서
+            숨겨지지 않는다(`[hidden]{display:none}` 은 우선순위가 같아 뒤에 오는 쪽이 이긴다).
+            조건부 렌더가 확실하다.
+          */}
+          {!isDesktop && center && !listOnly && (
+            <button
+              type="button"
+              onClick={showListOnly}
+              aria-label="목록만 보기"
+              title="목록만 보기"
+              style={{ bottom: `calc(${SNAP[snap] * 100}% + 12px)` }}
+              className="absolute left-1/2 z-40 flex h-12 w-12 -translate-x-1/2 items-center
+                         justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-black/10
+                         transition-all active:scale-95 hover:bg-slate-50 lg:hidden"
+            >
+              <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden="true" fill="currentColor">
+                <circle cx="3.2" cy="5" r="1.3" />
+                <circle cx="3.2" cy="10" r="1.3" />
+                <circle cx="3.2" cy="15" r="1.3" />
+                <rect x="6.6" y="4.1" width="10.4" height="1.8" rx="0.9" />
+                <rect x="6.6" y="9.1" width="10.4" height="1.8" rx="0.9" />
+                <rect x="6.6" y="14.1" width="10.4" height="1.8" rx="0.9" />
+              </svg>
+            </button>
+          )}
         </section>
 
         {/* 리스트 — 모바일은 바텀시트, 데스크톱은 왼쪽 칼럼 */}
@@ -501,6 +509,8 @@ export default function App() {
           enabled={!isDesktop}
           snap={snap}
           onSnapChange={setSnap}
+          expanded={listOnly}
+          onExpandedChange={setListOnly}
           label="검색 결과"
           desktopClassName="order-2 flex min-w-0 flex-col lg:order-1 lg:min-h-0"
         >
@@ -616,7 +626,11 @@ export default function App() {
           )}
 
           {/* 스크롤-마커 연동의 관찰 대상이 되는 컨테이너 (useCenterItem 의 root) */}
-          <div ref={scrollRef} className="scroll-thin min-h-0 flex-1 overflow-y-auto lg:pr-1">
+          <div
+            ref={scrollRef}
+            // 목록만 보기에서는 '지도 보기' 버튼이 아래에 떠 있으므로 마지막 카드가 가리지 않게 띄운다
+            className={`scroll-thin min-h-0 flex-1 overflow-y-auto lg:pr-1 ${listOnly ? 'pb-16' : ''}`}
+          >
             {center && (
             <PlaceList
               items={shownItems}
@@ -639,6 +653,29 @@ export default function App() {
         </div>
         )}
         </BottomSheet>
+
+        {/*
+          목록만 보기에서 지도로 돌아가는 버튼. 시트(z-30) 위에 떠야 하므로 z-40.
+          손잡이를 아래로 끌어도 빠져나올 수 있지만, 들어온 방법과 같은 자리에
+          같은 모양의 버튼이 있어야 되돌아가는 길이 분명해진다.
+        */}
+        {listOnly && !isDesktop && (
+          <button
+            type="button"
+            onClick={() => setListOnly(false)}
+            aria-label="지도 보기"
+            title="지도 보기"
+            className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-40 flex h-12
+                       items-center gap-1.5 rounded-full bg-slate-900 px-5 text-[13px] font-bold
+                       text-white shadow-xl ring-1 ring-black/10 transition active:scale-95"
+            style={{ transform: 'translateX(-50%)' }}
+          >
+            <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true" fill="currentColor">
+              <path d="M7.2 2.4 2.6 4.2v13.4l4.6-1.8 5.6 2.2 4.6-1.8V2.8l-4.6 1.8-5.6-2.2Zm.6 1.9 4.4 1.7v9.8L7.8 14.1V4.3Z" />
+            </svg>
+            지도 보기
+          </button>
+        )}
       </main>
 
       {/* 모바일 상세는 바텀시트가 맡는다. 여기서 또 띄우면 같은 내용이 두 번 뜬다. */}
