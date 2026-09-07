@@ -15,7 +15,7 @@ import {
   evaluate,
   mergeRows,
 } from './lib/finder.js';
-import { SEARCH_RADIUS_KM, TABS } from './lib/constants.js';
+import { PAGE_SIZE, SEARCH_RADIUS_KM, TABS } from './lib/constants.js';
 import { nowLabel } from './lib/time.js';
 
 export default function App() {
@@ -37,6 +37,8 @@ export default function App() {
   const [apiError, setApiError] = useState(null);
   const [notice, setNotice] = useState('');
   const [selectedId, setSelectedId] = useState(null);
+  // 지금 화면에 그리는 결과 수. 검색이 바뀔 때마다 처음으로 되돌린다.
+  const [renderLimit, setRenderLimit] = useState(PAGE_SIZE);
   // 상세 시트에 띄울 장소. 시트를 닫아도 지도 위 선택(마커 상태 B)은 유지한다.
   const [detailId, setDetailId] = useState(null);
   const [clock, setClock] = useState(() => new Date());
@@ -93,6 +95,7 @@ export default function App() {
     setApiError(null);
     setSelectedId(null);
     setDetailId(null);
+    setRenderLimit(PAGE_SIZE);
 
     const now = new Date();
     const params = {
@@ -223,6 +226,8 @@ export default function App() {
     listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  const handleShowMore = useCallback(() => setRenderLimit((n) => n + PAGE_SIZE), []);
+
   /** 목록 카드·지도 마커 공통 진입점. 장소를 선택하고 상세 시트를 연다. */
   const handleSelect = useCallback((id) => {
     setSelectedId(id);
@@ -235,6 +240,17 @@ export default function App() {
     if (stats?.source === 'kakao') return items;
     return items.filter((it) => it.isOpen);
   }, [items, stats?.source]);
+
+  /*
+   * 실제로 그리는 부분. 목록과 지도 마커가 같은 집합을 봐야 번호와 마커가 어긋나지 않는다.
+   * 개수 표시(visibleItems.length)는 자르기 전 값을 그대로 쓴다 — 사용자가 알아야 할 것은
+   * '지금 문 연 곳이 몇 곳인지' 이지 '우리가 몇 개를 그렸는지' 가 아니다.
+   */
+  const shownItems = useMemo(
+    () => visibleItems.slice(0, renderLimit),
+    [visibleItems, renderLimit],
+  );
+  const hasMore = visibleItems.length > shownItems.length;
 
   if (sdkError) {
     return (
@@ -288,7 +304,7 @@ export default function App() {
             <KakaoMap
               center={center}
               centerLabel={centerLabel}
-              items={visibleItems}
+              items={shownItems}
               selectedId={selectedId}
               onSelect={handleSelect}
               accent={activeTab.accent}
@@ -447,13 +463,15 @@ export default function App() {
           <div className="scroll-thin min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
             {center && (
             <PlaceList
-              items={visibleItems}
+              items={shownItems}
               loading={loading}
               error={error}
               emptyText={activeTab.empty}
               selectedId={selectedId}
               onSelect={handleSelect}
               onRetry={handleRetry}
+              total={visibleItems.length}
+              onShowMore={hasMore ? handleShowMore : null}
             />
             )}
           </div>

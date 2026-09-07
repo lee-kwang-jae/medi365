@@ -19,6 +19,8 @@ export default function PlaceList({
   selectedId,
   onSelect,
   onRetry,
+  total,
+  onShowMore,
 }) {
   if (loading) {
     return (
@@ -59,16 +61,30 @@ export default function PlaceList({
   }
 
   return (
-    <ul className="space-y-2.5">
-      {items.map((item, i) => (
-        <PlaceCard
-          key={item.id}
-          item={item}
-          index={i}
-          selected={item.id === selectedId}
-          onSelect={onSelect}
-        />
-      ))}
-    </ul>
+    <>
+      <ul className="space-y-2.5">
+        {items.map((item, i) => (
+          <PlaceCard
+            key={item.id}
+            item={item}
+            index={i}
+            selected={item.id === selectedId}
+            onSelect={onSelect}
+          />
+        ))}
+      </ul>
+
+      {/*
+        도심에서는 결과가 수천 곳이라 전부 그리면 화면이 멈춘다.
+        가까운 순으로 앞에서부터만 그리고, 나머지는 눌러서 이어 본다.
+      */}
+      {onShowMore && (
+        <div className="pt-2.5">
+          <button type="button" onClick={onShowMore} className="btn-ghost h-11 w-full text-sm">
+            더 보기 <span className="text-slate-400">({items.length}/{total}곳)</span>
+          </button>
+        </div>
+      )}
+    </>
   );
 }
