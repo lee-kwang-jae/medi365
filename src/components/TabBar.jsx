@@ -23,8 +23,10 @@ export default function TabBar({ value, onChange, disabled }) {
             // 탭 고유색은 constants 에 있으므로 클래스가 아니라 인라인으로 준다
             style={active ? { backgroundColor: tab.accent } : undefined}
             className={[
-              'flex h-9 shrink-0 items-center gap-1 rounded-full px-3.5 text-[13px] font-bold',
-              'shadow-lg ring-1 ring-black/10 transition-colors',
+              // 글자는 13px 그대로 두고 칩만 줄인다(높이 36→28, 좌우 14→10).
+              // 여기서 더 줄이면 글자가 테두리에 닿는다.
+              'flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-[13px] font-bold',
+              'shadow-md ring-1 ring-black/10 transition-colors',
               'disabled:cursor-not-allowed disabled:opacity-50',
               active ? 'text-white' : 'bg-white/95 text-slate-700 backdrop-blur hover:bg-white',
             ].join(' ')}
