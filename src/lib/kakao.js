@@ -207,6 +207,29 @@ export const kakaoLinks = {
 };
 
 /**
+ * 카카오맵 링크를 새 탭으로 열 것인가.
+ *
+ * 모바일에서는 새 탭으로 열면 안 된다. map.kakao.com 이 카카오맵 **앱** 으로 넘겨버리는데,
+ * 사용자가 브라우저로 돌아오면 그 새 탭 위에 서 있게 된다. 새 탭에는 방문 기록이 없어서
+ * 뒤로가기가 아무 일도 하지 않고, 탭 목록을 뒤질 줄 모르면 앱으로 못 돌아온다.
+ *
+ * 같은 탭으로 내보내면 뒤로가기 한 번이면 돌아온다. 돌아왔을 때 검색이 날아가지 않는 것은
+ * urlState 가 기준 좌표·탭을 주소창에 남겨두기 때문이다. 이 둘은 같이 있어야 의미가 있다.
+ *
+ * 데스크톱은 지금대로 새 탭이 낫다. 앱 화면이 그대로 남고 탭 전환도 쉽다.
+ */
+function opensInNewTab() {
+  if (typeof window === 'undefined') return true;
+  // 마우스 같은 정밀 포인터가 주 입력이면 데스크톱으로 본다
+  return window.matchMedia?.('(pointer: fine)')?.matches ?? true;
+}
+
+/** 카카오맵으로 나가는 앵커에 얹을 속성. 같은 탭으로 갈 때는 target 을 주지 않는다. */
+export function kakaoLinkProps() {
+  return opensInNewTab() ? { target: '_blank', rel: 'noopener noreferrer' } : {};
+}
+
+/**
  * 카카오맵에서 이 장소를 연다.
  *
  * E-Gen 응답에는 place_url 이 없어 클릭 시점에 Kakao Local 로 조회해야 하는데,
@@ -221,6 +244,15 @@ export const kakaoLinks = {
  *   호출부는 preventDefault 하지 말고 앵커의 기본 동작에 맡겨야 한다.
  */
 export function openInKakaoMap(item) {
+  /*
+   * 같은 탭으로 내보내는 환경(모바일)에서는 아무것도 하지 않고 앵커에 맡긴다.
+   * findPlaceUrl 은 시간 상한이 없어서, 콜백이 오지 않으면 그대로 매달린다.
+   * 새 탭 경로에서는 이미 열린 빈 탭이 보이기라도 하지만, 같은 탭에서 preventDefault 까지
+   * 해두고 매달리면 버튼이 그냥 먹통이 된다. 정확한 장소 페이지는 부가 기능일 뿐이므로
+   * 검색 링크로 나가는 편이 낫다.
+   */
+  if (!opensInNewTab()) return false;
+
   const win = window.open('about:blank', '_blank');
   if (!win) return false;
   try {

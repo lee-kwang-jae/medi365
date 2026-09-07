@@ -1,6 +1,10 @@
 import { formatDistance } from '../lib/geo.js';
 import { formatHoursLabel } from '../lib/time.js';
-import { kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
+import { kakaoLinkProps, kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
+
+// 카카오맵으로 나가는 링크의 target. 모바일에서 새 탭으로 열면 뒤로가기로 앱에
+// 돌아올 수 없어진다 (kakaoLinkProps 주석 참고).
+const linkProps = kakaoLinkProps();
 
 function StatusChip({ item }) {
   // 카카오 장소 검색 결과는 영업시간 자체가 없다. '영업 종료' 로 보이면 오해를 준다.
@@ -96,8 +100,7 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
           */}
           <a
             href={kakaoLinks.search(item.name)}
-            target="_blank"
-            rel="noopener noreferrer"
+            {...linkProps}
             onClick={(e) => {
               stop(e);
               if (openInKakaoMap(item)) e.preventDefault();
@@ -109,8 +112,7 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
           </a>
           <a
             href={kakaoLinks.to(item.name, item.lat, item.lng)}
-            target="_blank"
-            rel="noopener noreferrer"
+            {...linkProps}
             onClick={stop}
             className="btn-primary h-10 flex-1 text-xs sm:h-auto"
           >

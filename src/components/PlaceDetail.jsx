@@ -1,7 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { formatDistance } from '../lib/geo.js';
 import { formatHoursLabel } from '../lib/time.js';
-import { kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
+import { kakaoLinkProps, kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
+
+// 카카오맵으로 나가는 링크의 target. 모바일에서 새 탭으로 열면 뒤로가기로 앱에
+// 돌아올 수 없어진다 (kakaoLinkProps 주석 참고).
+const linkProps = kakaoLinkProps();
 
 /** 상세 지도의 확대 수준. 1 이 가장 가깝고 숫자가 클수록 넓게 본다 */
 const DETAIL_LEVEL = 3;
@@ -161,8 +165,7 @@ export default function PlaceDetail({ item, kind, accent, onClose }) {
           )}
           <a
             href={kakaoLinks.search(item.name)}
-            target="_blank"
-            rel="noopener noreferrer"
+            {...linkProps}
             onClick={(e) => {
               if (openInKakaoMap(item)) e.preventDefault();
             }}
@@ -172,8 +175,7 @@ export default function PlaceDetail({ item, kind, accent, onClose }) {
           </a>
           <a
             href={kakaoLinks.to(item.name, item.lat, item.lng)}
-            target="_blank"
-            rel="noopener noreferrer"
+            {...linkProps}
             className="btn-primary h-11 flex-1 text-sm"
           >
             🧭 길찾기
