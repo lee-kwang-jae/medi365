@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { formatDistance } from '../lib/geo.js';
 import { formatHoursLabel } from '../lib/time.js';
 import { kakaoLinkProps, kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
@@ -6,15 +6,6 @@ import { kakaoLinkProps, kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
 // 카카오맵으로 나가는 링크의 target. 모바일에서 새 탭으로 열면 뒤로가기로 앱에
 // 돌아올 수 없어진다 (kakaoLinkProps 주석 참고).
 const linkProps = kakaoLinkProps();
-
-/** 상세 지도의 확대 수준. 1 이 가장 가깝고 숫자가 클수록 넓게 본다 */
-const DETAIL_LEVEL = 3;
-
-const PIN_EMOJI = {
-  pharmacy: '\u{1F48A}', // 💊
-  hospital: '\u{1F3E5}', // 🏥
-  pediatric: '\u{1F9D2}', // 🧒
-};
 
 function StatusChip({ item }) {
   if (item.fromKakao) return <span className="chip bg-amber-100 text-amber-800">영업시간 확인 불가</span>;
@@ -24,59 +15,16 @@ function StatusChip({ item }) {
 }
 
 /**
- * 상세 내용 본체.
+ * 상세 내용 본체 — **설명만 담는다. 지도는 넣지 않는다.**
  *
- * 두 곳에서 쓰인다 — 데스크톱은 가운데 모달(`PlaceDetail`), 모바일은 바텀시트의
- * 반반(half) 상태 안. 같은 마크업을 두 벌 두면 한쪽만 고치는 사고가 나므로 하나로 둔다.
+ * 예전에는 이 안에 그 장소만 담은 작은 지도를 따로 띄웠다. 그런데 뒤에 이미
+ * 본 지도가 있고 선택한 곳의 핀이 확대돼 있으므로, 같은 장소를 두 번 그리는
+ * 셈이었다. 작은 지도를 빼면 상세가 짧아져 지도 아래 시트에 그대로 들어간다.
+ * 위치는 뒤의 본 지도가 보여주고, 여기서는 설명만 읽는다.
  *
- * @param inSheet 바텀시트 안이면 true. 닫기 버튼이 '목록으로 돌아가기'가 되고,
- *   시트가 이미 스크롤 컨테이너이므로 자체 높이 제한을 걸지 않는다.
+ * @param inSheet 바텀시트 안이면 true. 닫기 버튼이 '목록으로 돌아가기'가 된다.
  */
-export function PlaceDetailBody({ item, kind, accent, onClose, inSheet = false }) {
-  const mapBoxRef = useRef(null);
-
-  /* 상세 전용 지도 — 열릴 때 만들고 닫을 때 버린다 */
-  useEffect(() => {
-    if (!item || !mapBoxRef.current || !window.kakao?.maps) return undefined;
-    const { kakao } = window;
-    const box = mapBoxRef.current;
-
-    const position = new kakao.maps.LatLng(item.lat, item.lng);
-    const map = new kakao.maps.Map(box, { center: position, level: DETAIL_LEVEL });
-    map.setZoomable(false); // 작은 지도라 확대/축소는 막고 '카카오맵으로 보기' 로 유도
-
-    const content = document.createElement('div');
-    content.className = 'mk-anchor';
-    content.innerHTML =
-      `<div class="mk is-selected" style="--mk-color:${accent}">` +
-      `<div class="mk__body"><span class="mk__icon">${PIN_EMOJI[kind] ?? PIN_EMOJI.hospital}</span></div>` +
-      '</div>';
-
-    const overlay = new kakao.maps.CustomOverlay({
-      map,
-      position,
-      content,
-      xAnchor: 0.5,
-      yAnchor: 0.5,
-    });
-
-    // 시트가 열리거나 스냅이 바뀌는 동안에는 컨테이너 크기가 확정되지 않는다.
-    // 크기가 잡히는 시점에 relayout 하지 않으면 축척이 어긋난다.
-    const observer =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => {
-            map.relayout();
-            map.setCenter(position);
-          })
-        : null;
-    observer?.observe(box);
-
-    return () => {
-      observer?.disconnect();
-      overlay.setMap(null);
-    };
-  }, [item, kind, accent]);
-
+export function PlaceDetailBody({ item, onClose, inSheet = false }) {
   return (
     <>
       <div className="sticky top-0 z-10 bg-white/95 px-4 pb-2 pt-3 backdrop-blur">
@@ -105,17 +53,7 @@ export function PlaceDetailBody({ item, kind, accent, onClose, inSheet = false }
         </div>
       </div>
 
-      {/* 이 장소만 담은 지도 */}
-      <div className="px-4">
-        <div
-          ref={mapBoxRef}
-          className={`w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${
-            inSheet ? 'h-40' : 'h-48 sm:h-56'
-          }`}
-        />
-      </div>
-
-      <dl className="space-y-2 px-4 py-4 text-sm text-slate-700">
+      <dl className="space-y-2.5 px-4 pb-4 pt-1 text-sm text-slate-700">
         <div className="flex gap-2">
           <dt aria-hidden="true">📍</dt>
           <dd className="min-w-0 flex-1 break-words">{item.address || '주소 정보 없음'}</dd>
@@ -171,42 +109,33 @@ export function PlaceDetailBody({ item, kind, accent, onClose, inSheet = false }
 
 /**
  * 데스크톱 전용 상세 모달.
- * 모바일에서는 이것 대신 바텀시트가 half 상태로 열리며 같은 본체를 담는다 —
- * 둘 다 띄우면 카카오 지도 인스턴스가 두 개 생기고 배경 스크롤 잠금도 겹친다.
+ * 모바일에서는 이것 대신 바텀시트가 같은 본체를 담는다.
+ *
+ * 배경을 가리지 않는다(scrim 없음). 뒤의 본 지도에서 선택한 곳의 핀이 커져 있는데
+ * 그 위에 어두운 막을 덮으면 정작 봐야 할 것이 흐려진다.
  */
-export default function PlaceDetail({ item, kind, accent, onClose }) {
-  /* Esc 로 닫기 + 뒤 배경 스크롤 잠금 */
+export default function PlaceDetail({ item, onClose }) {
+  /* Esc 로 닫기 */
   useEffect(() => {
     if (!item) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
-    };
+    return () => document.removeEventListener('keydown', onKey);
   }, [item, onClose]);
 
   if (!item) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      onClick={onClose}
-      role="presentation"
+      role="dialog"
+      aria-modal="false"
+      aria-label={`${item.name} 상세`}
+      className="sheet-in fixed bottom-6 left-1/2 z-50 max-h-[70vh] w-[min(28rem,calc(100vw-3rem))]
+                 -translate-x-1/2 overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/10"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${item.name} 상세`}
-        onClick={(e) => e.stopPropagation()}
-        className="sheet-in max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-2xl"
-      >
-        <PlaceDetailBody item={item} kind={kind} accent={accent} onClose={onClose} />
-      </div>
+      <PlaceDetailBody item={item} onClose={onClose} />
     </div>
   );
 }

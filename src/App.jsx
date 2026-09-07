@@ -501,15 +501,9 @@ export default function App() {
           desktopClassName="order-2 flex min-w-0 flex-col lg:order-1 lg:min-h-0"
         >
         {detailItem && !isDesktop ? (
-          /* 반반(half) 레이아웃 — 위는 지도, 아래는 선택한 장소의 상세 */
+          /* 위는 지도(선택한 곳의 핀이 커져 있다), 아래 시트는 그 장소의 설명만 */
           <div ref={listRef} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-            <PlaceDetailBody
-              item={detailItem}
-              kind={tab}
-              accent={activeTab.accent}
-              onClose={handleCloseDetail}
-              inSheet
-            />
+            <PlaceDetailBody item={detailItem} onClose={handleCloseDetail} inSheet />
           </div>
         ) : (
         <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2.5 max-lg:px-3 max-lg:pt-1">
@@ -643,15 +637,8 @@ export default function App() {
         </BottomSheet>
       </main>
 
-      {/* 모바일 상세는 바텀시트가 맡는다. 여기서 또 띄우면 지도 인스턴스가 겹친다. */}
-      {isDesktop && (
-        <PlaceDetail
-          item={detailItem}
-          kind={tab}
-          accent={activeTab.accent}
-          onClose={handleCloseDetail}
-        />
-      )}
+      {/* 모바일 상세는 바텀시트가 맡는다. 여기서 또 띄우면 같은 내용이 두 번 뜬다. */}
+      {isDesktop && <PlaceDetail item={detailItem} onClose={handleCloseDetail} />}
 
     </div>
   );
