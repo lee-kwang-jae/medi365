@@ -3,17 +3,20 @@ import { useCallback, useEffect, useRef } from 'react';
 /**
  * 카카오맵 앱 방식의 바텀시트.
  *
- * 세 단계로 멈춘다. 부모 컨테이너 높이에 대한 비율이다.
- *  peek — 요약만 보이고 지도가 최대. 목록을 훑기 전 기본 상태.
- *  half — 지도와 반반. 장소를 하나 고른 뒤의 상세 보기가 여기 들어간다.
- *  full — 목록에 집중.
+ * 두 단계로 멈춘다. 부모 컨테이너 높이에 대한 비율이다.
+ *  peek — 요약만. 지도를 넓게 볼 때.
+ *  open — 목록이 지도 아래에 펼쳐진 기본 상태.
+ *
+ * **어느 단계에서도 지도를 덮지 않는다.** 목록을 아무리 스크롤해도 지도는 위에
+ * 남아 있어야 한다 — 그게 지도 앱과 목록 페이지를 가르는 지점이다.
+ * 그래서 MAX_RATIO 로 드래그 상한까지 막는다. 이 값을 올리면 지도가 사라진다.
  */
-export const SNAP = { peek: 0.24, half: 0.52, full: 0.9 };
-const ORDER = ['peek', 'half', 'full'];
+export const SNAP = { peek: 0.3, open: 0.62 };
+const ORDER = ['peek', 'open'];
 
 /** 드래그로 늘릴 수 있는 한계. 스냅 지점보다 살짝 넉넉히 둬야 손맛이 난다. */
-const MIN_RATIO = 0.14;
-const MAX_RATIO = 0.94;
+const MIN_RATIO = 0.22;
+const MAX_RATIO = 0.64;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 

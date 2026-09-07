@@ -58,7 +58,7 @@ export default function App() {
   const geoTriedRef = useRef(false);
 
   const isDesktop = useIsDesktop();
-  // 바텀시트 단계(모바일 전용). 상세를 열면 half 로 가서 지도와 반반이 된다.
+  // 바텀시트 단계(모바일 전용). open 이어도 지도는 위에 남는다 — BottomSheet 주석 참고.
   const [snap, setSnap] = useState('peek');
   const scrollRef = useRef(null);
 
@@ -88,6 +88,14 @@ export default function App() {
   useEffect(() => {
     writeUrlState({ center, centerLabel, tab });
   }, [center, centerLabel, tab]);
+
+  /*
+   * 검색하면 목록이 지도 아래에 펼쳐진다. 검색을 지우면 다시 요약만 남긴다.
+   * 검색 결과를 보려고 매번 시트를 끌어올리게 하면 한 동작이 더 든다.
+   */
+  useEffect(() => {
+    setSnap(center ? 'open' : 'peek');
+  }, [center]);
 
   /* 중심 좌표의 행정구역 라벨 */
   useEffect(() => {
@@ -246,7 +254,7 @@ export default function App() {
    * 예전에는 지도 아래의 목록으로 스크롤했지만, 이제 목록은 바텀시트라 시트를 올린다.
    */
   const expandList = useCallback(() => {
-    setSnap('full');
+    setSnap('open');
     if (isDesktop) listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [isDesktop]);
 
@@ -282,7 +290,7 @@ export default function App() {
   const handleSelect = useCallback((id) => {
     setSelectedId(id);
     setDetailId(id);
-    if (id) setSnap('half');
+    if (id) setSnap('open');
   }, []);
 
   /**
@@ -438,6 +446,7 @@ export default function App() {
               onSelect={handleSelect}
               accent={activeTab.accent}
               kind={tab}
+              bottomInsetRatio={isDesktop ? 0 : SNAP[snap]}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-slate-400">

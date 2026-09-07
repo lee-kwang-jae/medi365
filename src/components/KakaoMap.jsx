@@ -69,7 +69,21 @@ function centerContent(label) {
   );
 }
 
-export default function KakaoMap({ center, centerLabel, items, selectedId, onSelect, accent, kind }) {
+/**
+ * @param bottomInsetRatio 지도 아래쪽이 바텀시트에 가려지는 비율(0~1).
+ *   지도 div 자체는 화면 전체를 차지하므로, 이 값을 빼지 않으면 panTo·setBounds 가
+ *   '보이지 않는 중앙'을 기준으로 잡아 선택한 마커가 시트 뒤로 숨는다.
+ */
+export default function KakaoMap({
+  center,
+  centerLabel,
+  items,
+  selectedId,
+  onSelect,
+  accent,
+  kind,
+  bottomInsetRatio = 0,
+}) {
   const boxRef = useRef(null);
   const mapRef = useRef(null);
   const circleRef = useRef(null);
@@ -84,6 +98,9 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
   // 마커 클릭 핸들러가 최신 선택 상태를 보려면 ref 가 필요하다(재클릭 = 해제)
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
+  // fitPending 은 의존성 없이 고정된 콜백이라 최신 값을 ref 로 읽는다
+  const insetRatioRef = useRef(bottomInsetRatio);
+  insetRatioRef.current = bottomInsetRatio;
 
   /**
    * 대기 중인 bounds 를 지도에 적용한다.
@@ -99,8 +116,18 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     if (width < 2 || height < 2) return; // 아직 크기가 없다 → 다음 기회에
 
     map.relayout();
-    map.setBounds(pendingBoundsRef.current, 40, 40, 40, 40);
+    // 아래쪽은 시트에 가려지므로 그만큼 여백으로 잡아야 결과가 시트 뒤로 들어가지 않는다
+    const bottomPad = 40 + height * insetRatioRef.current;
+    map.setBounds(pendingBoundsRef.current, 40, 40, bottomPad, 40);
     pendingBoundsRef.current = null;
+
+    /*
+     * 맞춘 결과를 '되돌릴 중심'으로 새로 기록한다.
+     * 이걸 빼면 이후의 relayout(주소창 접힘·회전 등)이 viewCenterRef 에 남아 있던
+     * *검색 좌표* 로 되돌려, 방금 맞춘 화면을 지운다. 실제로 이 때문에 마커가
+     * 전부 시트 뒤로 내려가 있었다.
+     */
+    viewCenterRef.current = map.getCenter();
   }, []);
 
   /* 지도 최초 생성 */
@@ -265,8 +292,25 @@ export default function KakaoMap({ center, centerLabel, items, selectedId, onSel
     if (!selectedId) return;
 
     const marker = markersRef.current.get(selectedId);
-    if (marker) map.panTo(marker.position);
-  }, [selectedId, items]);
+    if (!marker) return;
+
+    /*
+     * 시트에 가려지지 않는 위쪽 영역의 한가운데로 옮긴다.
+     * 지도 중심을 아래로 inset/2 만큼 내리면 마커는 그만큼 위로 올라온다.
+     * 투영으로 한 번에 목표 좌표를 구해 panTo 를 한 번만 부른다 — panTo 뒤에
+     * panBy 를 이어 붙이면 애니메이션이 두 번 겹쳐 화면이 튄다.
+     */
+    const inset = boxRef.current.clientHeight * bottomInsetRatio;
+    if (inset < 1) {
+      map.panTo(marker.position);
+      return;
+    }
+
+    const projection = map.getProjection();
+    const point = projection.containerPointFromCoords(marker.position);
+    point.y += inset / 2;
+    map.panTo(projection.coordsFromContainerPoint(point));
+  }, [selectedId, items, bottomInsetRatio]);
 
   return <div ref={boxRef} className="h-full w-full" />;
 }
