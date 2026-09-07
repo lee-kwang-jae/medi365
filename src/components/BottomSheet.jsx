@@ -3,20 +3,22 @@ import { useCallback, useEffect, useRef } from 'react';
 /**
  * 카카오맵 앱 방식의 바텀시트.
  *
- * 두 단계로 멈춘다. 부모 컨테이너 높이에 대한 비율이다.
- *  peek — 요약만. 지도를 넓게 볼 때.
- *  open — 목록이 지도 아래에 펼쳐진 기본 상태.
+ * 두 단계로 멈춘다. 부모 컨테이너(헤더 아래 본문) 높이에 대한 비율이다.
+ *  peek — 손잡이와 지역명만 남기고 접힌다. 지도를 통째로 볼 때.
+ *  open — 목록이 지도 아래 펼쳐진 기본 상태.
  *
- * **어느 단계에서도 지도를 덮지 않는다.** 목록을 아무리 스크롤해도 지도는 위에
- * 남아 있어야 한다 — 그게 지도 앱과 목록 페이지를 가르는 지점이다.
- * 그래서 MAX_RATIO 로 드래그 상한까지 막는다. 이 값을 올리면 지도가 사라진다.
+ * **지도가 화면의 절반 아래로 내려가지 않아야 한다.**
+ * 비율의 기준은 본문 높이지만, 사용자가 체감하는 것은 *휴대폰 화면* 기준이다.
+ * 헤더(제목+탭)가 100px 안팎을 먹으므로 본문 기준 0.42 가 대략 화면의 절반이다.
+ *   812px 화면 · 헤더 102px → 본문 710px · 시트 298px → 지도 412px (화면의 51%)
+ * 이 값을 올리기 전에 반드시 실제 기기 높이로 다시 계산할 것.
  */
-export const SNAP = { peek: 0.3, open: 0.62 };
+export const SNAP = { peek: 0.1, open: 0.42 };
 const ORDER = ['peek', 'open'];
 
 /** 드래그로 늘릴 수 있는 한계. 스냅 지점보다 살짝 넉넉히 둬야 손맛이 난다. */
-const MIN_RATIO = 0.22;
-const MAX_RATIO = 0.64;
+const MIN_RATIO = 0.08;
+const MAX_RATIO = 0.45;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -75,7 +77,14 @@ export default function BottomSheet({
   const onPointerDown = (e) => {
     const el = sheetRef.current;
     if (!enabled || !el) return;
-    el.setPointerCapture(e.pointerId);
+    // 캡처는 손가락이 시트 밖으로 나가도 move 를 계속 받기 위한 것일 뿐이다.
+    // 실패해도 드래그 자체는 되어야 하므로 여기서 예외가 새어나가면 안 된다 —
+    // 새어나가면 아래 dragRef 할당이 건너뛰어져 시트가 아예 움직이지 않는다.
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* 캡처 없이 진행 */
+    }
     el.style.transition = 'none';
     dragRef.current = { startY: e.clientY, startHeight: el.getBoundingClientRect().height };
   };
@@ -96,7 +105,11 @@ export default function BottomSheet({
     const el = sheetRef.current;
     if (!drag || !el) return;
     dragRef.current = null;
-    el.releasePointerCapture?.(e.pointerId);
+    try {
+      el.releasePointerCapture(e.pointerId);
+    } catch {
+      /* 애초에 캡처하지 못했을 수 있다 */
+    }
     el.style.transition = ''; // 클래스에 정의된 전환으로 되돌린다
 
     const target = nearestSnap(el.getBoundingClientRect().height);
