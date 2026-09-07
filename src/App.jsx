@@ -416,10 +416,7 @@ export default function App() {
               </button>
             </div>
           </div>
-
-          <div className="mt-2 sm:mt-3">
-            <TabBar value={tab} onChange={setTab} disabled={!sdkReady} />
-          </div>
+          {/* 탭은 검색창과 함께 지도 안으로 옮겼다. 헤더에는 제목만 남는다. */}
         </div>
       </header>
 
@@ -458,9 +455,16 @@ export default function App() {
             구글 지도처럼 검색창을 지도 위에 띄운다.
             바깥 컨테이너는 pointer-events-none 이라 검색창을 비껴간 클릭은 지도로 그대로 전달된다.
           */}
-          <div className="pointer-events-none absolute inset-x-2 top-2 z-20 sm:inset-x-3 sm:top-3">
+          <div className="pointer-events-none absolute inset-x-2 top-2 z-20 space-y-2 sm:inset-x-3 sm:top-3">
             <div className="pointer-events-auto mx-auto max-w-xl">
               <SearchBar onSearch={handleSearch} loading={loading || !sdkReady} />
+            </div>
+            {/*
+              칩 세 개는 왼쪽에 붙인다. 가운데 정렬하면 지도의 가장 중요한 부분(중심)
+              바로 위를 가로지른다. 화면이 좁으면 가로로 넘겨 볼 수 있게 둔다.
+            */}
+            <div className="pointer-events-auto mx-auto max-w-xl overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <TabBar value={tab} onChange={setTab} disabled={!sdkReady} />
             </div>
           </div>
 
