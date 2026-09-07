@@ -18,7 +18,9 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
   const stop = (e) => e.stopPropagation();
 
   return (
-    <li>
+    // data-place-id: 바텀시트 중앙에 놓인 카드를 찾는 IntersectionObserver 의 표식
+    // (src/hooks/useCenterItem.js). 지우면 스크롤-마커 연동이 조용히 멎는다.
+    <li data-place-id={item.id}>
       {/* 카드 전체가 클릭 대상이지만 내부에 링크/버튼이 있으므로 div + role=button 사용 */}
       <div
         role="button"

@@ -3,9 +3,12 @@ import TabBar from './components/TabBar.jsx';
 import SearchBar from './components/SearchBar.jsx';
 import KakaoMap from './components/KakaoMap.jsx';
 import PlaceList from './components/PlaceList.jsx';
-import PlaceDetail from './components/PlaceDetail.jsx';
+import PlaceDetail, { PlaceDetailBody } from './components/PlaceDetail.jsx';
+import BottomSheet, { SNAP } from './components/BottomSheet.jsx';
 import useKakaoSdk from './hooks/useKakaoSdk.js';
 import useGeolocation from './hooks/useGeolocation.js';
+import { useIsDesktop } from './hooks/useMediaQuery.js';
+import { useCenterItem } from './hooks/useCenterItem.js';
 import { searchLocation, coordToRegion } from './lib/kakao.js';
 import {
   collectFromDataset,
@@ -53,6 +56,11 @@ export default function App() {
   const listRef = useRef(null);
   const reqRef = useRef(0);
   const geoTriedRef = useRef(false);
+
+  const isDesktop = useIsDesktop();
+  // 바텀시트 단계(모바일 전용). 상세를 열면 half 로 가서 지도와 반반이 된다.
+  const [snap, setSnap] = useState('peek');
+  const scrollRef = useRef(null);
 
   const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
 
@@ -233,10 +241,14 @@ export default function App() {
 
   const handleRetry = useCallback(() => setRetryKey((n) => n + 1), []);
 
-  /** 지도 위 버튼에서 목록으로 이동 (모바일은 목록이 지도 아래에 있다) */
-  const scrollToList = useCallback(() => {
-    listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+  /**
+   * 지도 위 버튼에서 목록 펼치기.
+   * 예전에는 지도 아래의 목록으로 스크롤했지만, 이제 목록은 바텀시트라 시트를 올린다.
+   */
+  const expandList = useCallback(() => {
+    setSnap('full');
+    if (isDesktop) listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [isDesktop]);
 
   const handleShowMore = useCallback(() => setRenderLimit((n) => n + PAGE_SIZE), []);
 
@@ -263,11 +275,22 @@ export default function App() {
     setRenderLimit(PAGE_SIZE);
   }, []);
 
-  /** 목록 카드·지도 마커 공통 진입점. 장소를 선택하고 상세 시트를 연다. */
+  /**
+   * 목록 카드·지도 마커 공통 진입점 — 선택 + 상세 열기.
+   * 모바일에서는 시트를 half 로 올려 지도와 반반이 되게 한다.
+   */
   const handleSelect = useCallback((id) => {
     setSelectedId(id);
     setDetailId(id);
+    if (id) setSnap('half');
   }, []);
+
+  /**
+   * 시트를 스크롤하다 가운데로 들어온 장소.
+   * 강조와 지도 이동만 하고 **상세는 열지 않는다** — 훑어보는 중에 상세가 튀어나오면
+   * 스크롤이 막힌다. 상세는 명시적으로 눌렀을 때만 연다.
+   */
+  const handleActivate = useCallback((id) => setSelectedId(id), []);
 
   /* 표시 대상: 지금 영업중 (+옵션에 따라 시간 미등록 포함) */
   const visibleItems = useMemo(() => {
@@ -287,6 +310,38 @@ export default function App() {
   );
   const hasMore = visibleItems.length > shownItems.length;
 
+  const detailItem = useMemo(
+    () => visibleItems.find((it) => it.id === detailId) ?? null,
+    [visibleItems, detailId],
+  );
+
+  /*
+   * 스크롤 → 마커 연동. 상세를 보는 중이거나 데스크톱(목록이 늘 옆에 있다)에서는 끈다.
+   * itemsKey 로 목록이 바뀐 것을 알려야 관찰 대상을 다시 잡는다.
+   */
+  const { suppress } = useCenterItem(scrollRef, {
+    enabled: !isDesktop && !detailId && !!center && shownItems.length > 0,
+    itemsKey: `${tab}:${shownItems.length}:${shownItems[0]?.id ?? ''}`,
+    onChange: handleActivate,
+  });
+
+  /**
+   * 상세를 닫고 목록으로. 보던 장소의 카드가 화면 가운데 오도록 되돌린다 —
+   * 목록 맨 위로 튕기면 어디를 보고 있었는지 잃는다.
+   */
+  const handleCloseDetail = useCallback(() => {
+    const id = detailId;
+    setDetailId(null);
+    if (!id || isDesktop) return;
+    // 목록이 다시 그려진 다음 프레임에 위치를 잡는다
+    requestAnimationFrame(() => {
+      const el = scrollRef.current?.querySelector(`[data-place-id="${CSS.escape(String(id))}"]`);
+      if (!el) return;
+      suppress(id); // 우리가 움직인 스크롤이 다시 지도를 움직이지 않게
+      el.scrollIntoView({ block: 'center' });
+    });
+  }, [detailId, isDesktop, suppress]);
+
   if (sdkError) {
     return (
       <div className="flex h-full items-center justify-center p-6">
@@ -303,9 +358,10 @@ export default function App() {
   }
 
   return (
-    // 데스크톱은 화면 높이에 딱 맞춰 페이지 스크롤을 없앤다.
+    // 모바일·데스크톱 모두 화면 높이에 딱 맞춘다. 페이지 자체는 스크롤하지 않는다 —
+    // 모바일은 바텀시트가 지도 위에 얹혀야 하므로 본문에 확정된 높이가 필요하다.
     // 지도 높이를 calc(100vh - 헤더높이) 같은 매직 넘버로 맞추면 헤더가 바뀔 때마다 어긋난다.
-    <div className="flex min-h-full flex-col lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden">
+    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden">
       {/* ── 상단 컨트롤 ─────────────────────────────── */}
       {/* 검색창은 지도 안으로 옮겼다(구글 지도 방식). 헤더에는 제목과 탭만 남는다. */}
       {/* 모바일에서는 고정하지 않는다. 좁은 화면에서 세로 공간을 계속 차지한다. */}
@@ -360,13 +416,18 @@ export default function App() {
       </header>
 
       {/* ── 본문 ────────────────────────────────────── */}
-      <main className="mx-auto grid w-full max-w-7xl flex-1 gap-3 p-3 sm:px-4 lg:min-h-0 lg:grid-cols-[minmax(340px,400px)_1fr]">
+      {/*
+        모바일: 지도가 main 전체를 채우고 바텀시트가 그 위에 절대배치로 얹힌다.
+        데스크톱: 예전처럼 목록 | 지도 2단 그리드.
+      */}
+      <main className="relative mx-auto w-full min-h-0 max-w-7xl flex-1
+                       lg:grid lg:gap-3 lg:p-3 lg:grid-cols-[minmax(340px,400px)_1fr]">
         {/* 지도 */}
         <section
           aria-label="지도"
-          className="relative order-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card
-                     max-lg:h-[calc(52vh+26px)] max-lg:[@supports(height:1dvh)]:h-[calc(52dvh+26px)]
-                     lg:order-2 lg:h-full"
+          className="overflow-hidden border-slate-200 bg-white
+                     max-lg:absolute max-lg:inset-0
+                     lg:relative lg:order-2 lg:h-full lg:rounded-2xl lg:border lg:shadow-card"
         >
           {sdkReady ? (
             <KakaoMap
@@ -395,15 +456,19 @@ export default function App() {
           </div>
 
           {/*
-            목록으로 이동. 모바일은 지도 아래에 목록이 이어지므로 스크롤이 필요하다.
+            목록 펼치기. 시트를 손잡이로 끌어올릴 수도 있지만, 한 번에 열고 싶을 때가 있다.
+            시트가 이미 올라와 있으면 가려지므로 peek 일 때만 보인다.
+            bottom 값은 시트가 peek 일 때의 높이(SNAP.peek) 바로 위 — 두 값은 함께 움직인다.
             데스크톱(lg)은 목록이 항상 옆에 보여서 숨긴다.
           */}
           <button
             type="button"
-            onClick={scrollToList}
-            aria-label="목록으로 이동"
-            title="목록으로"
-            className="absolute bottom-3 left-1/2 z-10 flex h-11 w-11 -translate-x-1/2 items-center
+            onClick={expandList}
+            aria-label="목록 펼치기"
+            title="목록 펼치기"
+            hidden={isDesktop || snap !== 'peek'}
+            style={{ bottom: `calc(${SNAP.peek * 100}% + 12px)` }}
+            className="absolute left-1/2 z-10 flex h-11 w-11 -translate-x-1/2 items-center
                        justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-black/10
                        transition active:scale-95 hover:bg-slate-50 lg:hidden"
           >
@@ -418,13 +483,28 @@ export default function App() {
           </button>
         </section>
 
-        {/* 리스트 */}
-        <section
-          ref={listRef}
-          aria-label="검색 결과"
-          className="order-2 flex min-w-0 flex-col gap-2.5 lg:order-1 lg:min-h-0"
+        {/* 리스트 — 모바일은 바텀시트, 데스크톱은 왼쪽 칼럼 */}
+        <BottomSheet
+          enabled={!isDesktop}
+          snap={snap}
+          onSnapChange={setSnap}
+          label="검색 결과"
+          desktopClassName="order-2 flex min-w-0 flex-col lg:order-1 lg:min-h-0"
         >
-          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-card">
+        {detailItem && !isDesktop ? (
+          /* 반반(half) 레이아웃 — 위는 지도, 아래는 선택한 장소의 상세 */
+          <div ref={listRef} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+            <PlaceDetailBody
+              item={detailItem}
+              kind={tab}
+              accent={activeTab.accent}
+              onClose={handleCloseDetail}
+              inSheet
+            />
+          </div>
+        ) : (
+        <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2.5 max-lg:px-3 max-lg:pt-1">
+          <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card">
             {!center ? (
               <div className="text-center">
                 <p className="text-sm font-bold text-slate-800">위치를 확인해 주세요</p>
@@ -528,7 +608,8 @@ export default function App() {
             </p>
           )}
 
-          <div className="scroll-thin min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
+          {/* 스크롤-마커 연동의 관찰 대상이 되는 컨테이너 (useCenterItem 의 root) */}
+          <div ref={scrollRef} className="scroll-thin min-h-0 flex-1 overflow-y-auto lg:pr-1">
             {center && (
             <PlaceList
               items={shownItems}
@@ -548,15 +629,20 @@ export default function App() {
             <br />
             영업시간은 기관이 등록한 정보로, 실제와 다를 수 있으니 방문 전 전화 확인을 권장합니다.
           </footer>
-        </section>
+        </div>
+        )}
+        </BottomSheet>
       </main>
 
-      <PlaceDetail
-        item={visibleItems.find((it) => it.id === detailId) ?? null}
-        kind={tab}
-        accent={activeTab.accent}
-        onClose={() => setDetailId(null)}
-      />
+      {/* 모바일 상세는 바텀시트가 맡는다. 여기서 또 띄우면 지도 인스턴스가 겹친다. */}
+      {isDesktop && (
+        <PlaceDetail
+          item={detailItem}
+          kind={tab}
+          accent={activeTab.accent}
+          onClose={handleCloseDetail}
+        />
+      )}
 
     </div>
   );
