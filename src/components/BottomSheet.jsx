@@ -35,8 +35,6 @@ export default function BottomSheet({
 }) {
   const sheetRef = useRef(null);
   const dragRef = useRef(null);
-  // 본문에서 손을 댔지만 아직 스크롤인지 시트 드래그인지 판단하지 않은 상태
-  const pendingRef = useRef(null);
 
   const parentHeight = useCallback(
     () => sheetRef.current?.parentElement?.clientHeight || window.innerHeight,
@@ -79,24 +77,19 @@ export default function BottomSheet({
     [parentHeight],
   );
 
-  /** 실제 드래그 시작. 잡은 순간의 높이를 기준으로 삼는다. */
-  const beginDrag = (el, clientY, pointerId) => {
+  const onPointerDown = (e) => {
+    const el = sheetRef.current;
+    if (!enabled || !el) return;
     // 캡처는 손가락이 시트 밖으로 나가도 move 를 계속 받기 위한 것일 뿐이다.
     // 실패해도 드래그 자체는 되어야 하므로 여기서 예외가 새어나가면 안 된다 —
     // 새어나가면 아래 dragRef 할당이 건너뛰어져 시트가 아예 움직이지 않는다.
     try {
-      el.setPointerCapture(pointerId);
+      el.setPointerCapture(e.pointerId);
     } catch {
       /* 캡처 없이 진행 */
     }
     el.style.transition = 'none';
-    dragRef.current = { startY: clientY, startHeight: el.getBoundingClientRect().height };
-  };
-
-  const onPointerDown = (e) => {
-    const el = sheetRef.current;
-    if (!enabled || !el) return;
-    beginDrag(el, e.clientY, e.pointerId);
+    dragRef.current = { startY: e.clientY, startHeight: el.getBoundingClientRect().height };
   };
 
   const onPointerMove = (e) => {
@@ -127,67 +120,6 @@ export default function BottomSheet({
     if (target !== snap) onSnapChange(target);
   };
 
-  /* ── 목록(흰 박스) 본문에서 끌어내리기 ──────────────────────────
-   * 본문은 스크롤도 해야 하므로 손잡이처럼 무조건 잡으면 안 된다.
-   * **목록이 맨 위에 있고 아래로 끄는** 제스처일 때만 시트 드래그로 넘긴다.
-   * 위로 끌거나 이미 스크롤이 내려가 있으면 평소대로 목록이 스크롤된다.
-   * ──────────────────────────────────────────────────────────── */
-
-  /** 이만큼 움직이기 전에는 스크롤인지 시트 드래그인지 판단하지 않는다 */
-  const DRAG_START_PX = 8;
-
-  /** e.target 에서 시트 안쪽으로 올라가며 실제로 스크롤되는 조상을 찾는다 */
-  const scrollableAncestor = (from, root) => {
-    let node = from;
-    while (node && node !== root) {
-      if (node.scrollHeight > node.clientHeight + 1) {
-        const oy = getComputedStyle(node).overflowY;
-        if (oy === 'auto' || oy === 'scroll') return node;
-      }
-      node = node.parentElement;
-    }
-    return null;
-  };
-
-  const onBodyPointerDown = (e) => {
-    const el = sheetRef.current;
-    if (!enabled || !el) return;
-    // 버튼·링크를 누르는 중이면 시트를 끌 일이 아니다
-    if (e.target.closest?.('a,button,input,select,textarea')) return;
-    pendingRef.current = {
-      startY: e.clientY,
-      scroller: scrollableAncestor(e.target, el),
-    };
-  };
-
-  const onBodyPointerMove = (e) => {
-    if (dragRef.current) return onPointerMove(e);
-
-    const pending = pendingRef.current;
-    const el = sheetRef.current;
-    if (!pending || !el) return;
-
-    const dy = e.clientY - pending.startY;
-    if (dy < -DRAG_START_PX) {
-      pendingRef.current = null; // 위로 = 목록 스크롤. 시트는 건드리지 않는다
-      return;
-    }
-    if (dy < DRAG_START_PX) return; // 아직 판단하기 이르다
-
-    // 목록이 이미 내려가 있으면 먼저 위로 다 올라간 뒤에야 시트가 따라온다
-    if (pending.scroller && pending.scroller.scrollTop > 0) {
-      pendingRef.current = null;
-      return;
-    }
-    pendingRef.current = null;
-    beginDrag(el, e.clientY, e.pointerId);
-  };
-
-  const onBodyPointerUp = (e) => {
-    pendingRef.current = null;
-    if (dragRef.current) endDrag(e);
-  };
-
   // 데스크톱에서는 시트가 아니라 왼쪽 칼럼이다. 드래그 핸들러도 붙이지 않는다.
   if (!enabled) return <section className={desktopClassName}>{children}</section>;
 
@@ -215,20 +147,7 @@ export default function BottomSheet({
         <div className="mx-auto h-1.5 w-10 rounded-full bg-slate-300" />
       </div>
 
-      {/*
-        목록 본문. 손잡이뿐 아니라 이 흰 박스를 끌어도 시트가 내려간다.
-        touch-action 은 건드리지 않는다 — pan-y 를 막으면 목록 스크롤이 죽는다.
-        스크롤이 맨 위일 때만 드래그로 넘어가므로 두 동작이 부딪히지 않는다.
-      */}
-      <div
-        onPointerDown={onBodyPointerDown}
-        onPointerMove={onBodyPointerMove}
-        onPointerUp={onBodyPointerUp}
-        onPointerCancel={onBodyPointerUp}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        {children}
-      </div>
+      {children}
     </section>
   );
 }

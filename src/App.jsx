@@ -510,7 +510,7 @@ export default function App() {
         >
         {detailItem && !isDesktop ? (
           /* 위는 지도(선택한 곳의 핀이 커져 있다), 아래 시트는 그 장소의 설명만 */
-          <div ref={listRef} className="scroll-thin min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div ref={listRef} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
             <PlaceDetailBody item={detailItem} onClose={handleCloseDetail} inSheet />
           </div>
         ) : (
@@ -522,7 +522,7 @@ export default function App() {
           */}
           <div
             ref={scrollRef}
-            className="scroll-thin min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain lg:pr-1"
+            className="scroll-thin min-h-0 flex-1 space-y-2.5 overflow-y-auto lg:pr-1"
           >
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-card">
             {!center ? (
