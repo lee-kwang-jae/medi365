@@ -106,6 +106,30 @@ function keywordSearch(keyword) {
 }
 
 /**
+ * 카카오의 시군구 이름을 E-Gen 의 Q1 값으로 바꾼다.
+ *
+ * 일반구(시 아래의 구)는 이름을 붙이지 않고 **시까지만** 쓴다.
+ *   카카오: "화성시 효행구" → E-Gen Q1: "화성시"
+ *
+ * 구 단위로 물으면 더 적게 받아 좋을 것 같지만, E-Gen 의 구 태깅이 완전하지 않다.
+ * 2025 년에 구가 새로 생긴 화성시가 대표적이다 (실측, 2026-09-07):
+ *   Q1=화성시        → 약국 350 · 병원 1040
+ *   Q1=화성시효행구+동탄구+병점구 → 약국  38 · 병원  770
+ * 아직 구 없는 옛 주소로 등록된 기관이 그대로 남아 있어서, 구로 물으면
+ * 봉담읍 약국 대부분이 통째로 사라진다.
+ *
+ * 반대 방향의 누락은 없다. 시로 물은 결과가 그 시의 모든 구 결과를 포함하는 것을
+ * 화성·고양·창원·전주 4개 시 × 약국/병원 양쪽에서 확인했다. 구 질의를 시 질의로
+ * 바꿔도 잃는 것이 없고, 반경이 한 시의 여러 구에 걸칠 때는 호출 수까지 줄어든다.
+ *
+ * 서울·부산 등의 자치구("강남구")는 앞에 시 이름이 없으므로 그대로 둔다.
+ */
+export function toEgenSigungu(name) {
+  const gu = name.match(/^(\S+시)\s+\S+구$/);
+  return (gu ? gu[1] : name).replace(/\s+/g, '');
+}
+
+/**
  * 좌표 → 행정구역. 응급의료포털 요청용 Q0(시도)/Q1(시군구) 로 변환해 돌려준다.
  * @returns {Promise<{q0:string, q1:string, label:string}|null>}
  */
@@ -116,8 +140,7 @@ export function coordToRegion({ lat, lng }) {
       const region = result.find((r) => r.region_type === 'H') || result[0];
 
       const sido = SIDO_MAP[region.region_1depth_name] || region.region_1depth_name;
-      // 카카오: "성남시 분당구" → E-Gen: "성남시분당구"
-      const sigungu = (region.region_2depth_name || '').replace(/\s+/g, '');
+      const sigungu = toEgenSigungu(region.region_2depth_name || '');
 
       resolve({
         q0: sido,
