@@ -240,6 +240,29 @@ export default function App() {
 
   const handleShowMore = useCallback(() => setRenderLimit((n) => n + PAGE_SIZE), []);
 
+  /*
+   * 처음 화면으로. 검색 기준을 지우면 '위치를 확인해 주세요' 안내가 다시 나오고,
+   * 주소창의 검색 상태도 동기화 effect 가 알아서 비운다.
+   *
+   * 일부러 내 위치를 다시 잡지는 않는다. 검색에서 빠져나오려고 누른 버튼이
+   * 곧바로 또 다른 검색을 시작해 버리면 빠져나올 방법이 없어진다.
+   * 위치로 시작하고 싶으면 안내에 있는 '내 위치로 찾기' 를 누르면 된다.
+   */
+  const handleHome = useCallback(() => {
+    setCenter(null);
+    setCenterLabel('');
+    setRegionLabel('');
+    setTab(TABS[0].key);
+    setItems([]);
+    setStats(null);
+    setError(null);
+    setApiError(null);
+    setNotice('');
+    setSelectedId(null);
+    setDetailId(null);
+    setRenderLimit(PAGE_SIZE);
+  }, []);
+
   /** 목록 카드·지도 마커 공통 진입점. 장소를 선택하고 상세 시트를 연다. */
   const handleSelect = useCallback((id) => {
     setSelectedId(id);
@@ -292,9 +315,42 @@ export default function App() {
             <h1 className="truncate text-[15px] font-extrabold tracking-tight sm:text-lg">
               오늘 문 연 약국·의원
             </h1>
-            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 sm:px-2.5 sm:py-1">
-              {nowLabel(clock)}
-            </span>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 sm:px-2.5 sm:py-1">
+                {nowLabel(clock)}
+              </span>
+              {/*
+                처음 화면으로 빠져나오는 버튼. 이모지 대신 SVG 를 쓴다 —
+                작게 두는 아이콘이라 플랫폼마다 달라지는 이모지 모양·크기가 그대로 티가 난다.
+                검색 중이 아닐 때는 눌러도 달라질 게 없으므로 비활성으로 둔다(사라지게 하면
+                헤더가 들썩인다).
+              */}
+              <button
+                type="button"
+                onClick={handleHome}
+                disabled={!center}
+                aria-label="처음 화면으로"
+                title="처음 화면으로"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500
+                           transition-colors hover:bg-slate-100 hover:text-slate-800
+                           disabled:pointer-events-none disabled:opacity-30 sm:h-8 sm:w-8"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-[18px] w-[18px]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 10.5 12 3l9 7.5" />
+                  <path d="M5.5 9.5V20h13V9.5" />
+                  <path d="M10 20v-5.5h4V20" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="mt-2 sm:mt-3">
