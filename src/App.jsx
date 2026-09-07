@@ -515,8 +515,17 @@ export default function App() {
             <PlaceDetailBody item={detailItem} onClose={handleCloseDetail} inSheet />
           </div>
         ) : (
-        <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2.5 max-lg:px-3 max-lg:pt-1">
-          <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card">
+        <div ref={listRef} className="flex min-h-0 flex-1 flex-col max-lg:px-3 max-lg:pt-1">
+          {/*
+            위치 요약도 스크롤 영역 안에 둔다. 밖에 고정해 두면 목록만 따로 흐르는
+            느낌이라, 시트를 올릴 때 위치 상자가 제자리에 남아 어색하다.
+            스크롤 컨테이너는 아래 scrollRef 하나뿐이므로 여기 있는 것들이 함께 움직인다.
+          */}
+          <div
+            ref={scrollRef}
+            className="scroll-thin min-h-0 flex-1 space-y-2.5 overflow-y-auto lg:pr-1"
+          >
+          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-card">
             {!center ? (
               <div className="text-center">
                 <p className="text-sm font-bold text-slate-800">위치를 확인해 주세요</p>
@@ -620,9 +629,8 @@ export default function App() {
             </p>
           )}
 
-          {/* 스크롤-마커 연동의 관찰 대상이 되는 컨테이너 (useCenterItem 의 root) */}
-          <div ref={scrollRef} className="scroll-thin min-h-0 flex-1 overflow-y-auto lg:pr-1">
-            {center && (
+          {/* 이 컨테이너가 스크롤-마커 연동의 관찰 대상이다 (useCenterItem 의 root) */}
+          {center && (
             <PlaceList
               items={shownItems}
               loading={loading}
@@ -634,7 +642,7 @@ export default function App() {
               total={visibleItems.length}
               onShowMore={hasMore ? handleShowMore : null}
             />
-            )}
+          )}
           </div>
           <footer className="shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 text-center text-[11px] leading-relaxed text-slate-400">
             데이터 출처: 보건복지부 응급의료포털(E-Gen) 공공데이터 · 지도: 카카오맵
