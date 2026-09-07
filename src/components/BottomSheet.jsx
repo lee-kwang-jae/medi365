@@ -4,20 +4,23 @@ import { useCallback, useEffect, useRef } from 'react';
  * 카카오맵 앱 방식의 바텀시트.
  *
  * 두 단계로 멈춘다. 부모 컨테이너(헤더 아래 본문) 높이에 대한 비율이다.
- *  peek — 손잡이와 지역명만 남기고 접힌다. 지도를 통째로 볼 때.
- *  open — 목록이 지도 아래 펼쳐진 기본 상태.
+ *  closed — 손으로 끌어내리면 시트가 화면 밖으로 사라지고 지도만 남는다.
+ *  open   — 목록이 지도 아래 펼쳐진 기본 상태.
  *
- * **지도가 화면의 절반 아래로 내려가지 않아야 한다.**
+ * closed 는 높이가 0 이라 손잡이도 사라진다. 되돌아오는 길은 지도 하단 중앙의
+ * 동그란 목록 버튼뿐이므로, 그 버튼을 지우면 목록으로 돌아갈 방법이 없어진다.
+ *
+ * **open 에서 지도가 화면의 절반 아래로 내려가지 않아야 한다.**
  * 비율의 기준은 본문 높이지만, 사용자가 체감하는 것은 *휴대폰 화면* 기준이다.
- * 헤더(제목+탭)가 100px 안팎을 먹으므로 본문 기준 0.42 가 대략 화면의 절반이다.
- *   812px 화면 · 헤더 102px → 본문 710px · 시트 298px → 지도 412px (화면의 51%)
+ * 헤더가 100px 안팎을 먹으므로 본문 기준 0.42 가 대략 화면의 절반이다.
+ *   812px 화면 · 헤더 47px → 본문 765px · 시트 321px → 지도 444px (화면의 55%)
  * 이 값을 올리기 전에 반드시 실제 기기 높이로 다시 계산할 것.
  */
-export const SNAP = { peek: 0.1, open: 0.42 };
-const ORDER = ['peek', 'open'];
+export const SNAP = { closed: 0, open: 0.42 };
+const ORDER = ['closed', 'open'];
 
-/** 드래그로 늘릴 수 있는 한계. 스냅 지점보다 살짝 넉넉히 둬야 손맛이 난다. */
-const MIN_RATIO = 0.08;
+/** 드래그 범위. 아래로는 완전히 닫히고, 위로는 지도를 지키려고 막는다. */
+const MIN_RATIO = 0;
 const MAX_RATIO = 0.45;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -38,7 +41,7 @@ export default function BottomSheet({
     [],
   );
   const heightFor = useCallback(
-    (name) => parentHeight() * (SNAP[name] ?? SNAP.half),
+    (name) => parentHeight() * (SNAP[name] ?? SNAP.open),
     [parentHeight],
   );
 

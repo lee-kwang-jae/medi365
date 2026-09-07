@@ -59,7 +59,7 @@ export default function App() {
 
   const isDesktop = useIsDesktop();
   // 바텀시트 단계(모바일 전용). open 이어도 지도는 위에 남는다 — BottomSheet 주석 참고.
-  const [snap, setSnap] = useState('peek');
+  const [snap, setSnap] = useState('open');
   const scrollRef = useRef(null);
 
   const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
@@ -90,11 +90,12 @@ export default function App() {
   }, [center, centerLabel, tab]);
 
   /*
-   * 검색하면 목록이 지도 아래에 펼쳐진다. 검색을 지우면 다시 요약만 남긴다.
-   * 검색 결과를 보려고 매번 시트를 끌어올리게 하면 한 동작이 더 든다.
+   * 검색하면 목록이 지도 아래에 펼쳐진다. 결과를 보려고 매번 시트를 끌어올리게 하면
+   * 한 동작이 더 든다. 위치가 아직 없을 때도 열어 둔다 — 그 자리에 '내 위치로 찾기'
+   * 안내가 들어가는데, 닫혀 있으면 그 안내를 볼 방법이 없다.
    */
   useEffect(() => {
-    setSnap(center ? 'open' : 'peek');
+    setSnap('open');
   }, [center]);
 
   /* 중심 좌표의 행정구역 라벨 */
@@ -469,24 +470,22 @@ export default function App() {
           </div>
 
           {/*
-            목록 펼치기. 시트를 손잡이로 끌어올릴 수도 있지만, 한 번에 열고 싶을 때가 있다.
-            시트가 이미 올라와 있으면 가려지므로 peek 일 때만 보인다.
-            bottom 값은 시트가 peek 일 때의 높이(SNAP.peek) 바로 위 — 두 값은 함께 움직인다.
-            데스크톱(lg)은 목록이 항상 옆에 보여서 숨긴다.
-          */}
-          {/*
+            시트를 끝까지 끌어내리면 시트가 화면 밖으로 사라져 손잡이도 없어진다.
+            그때 목록으로 돌아오는 길은 이 버튼뿐이므로 지우면 안 된다.
+
             hidden 속성은 쓰지 않는다 — Tailwind 의 `flex` 가 display 를 다시 켜서
             숨겨지지 않는다(`[hidden]{display:none}` 과 우선순위가 같아 뒤가 이긴다).
+            데스크톱(lg)은 목록이 항상 옆에 보여서 숨긴다.
           */}
-          {!isDesktop && snap === 'peek' && (
+          {!isDesktop && snap === 'closed' && (
             <button
               type="button"
               onClick={expandList}
               aria-label="목록 펼치기"
               title="목록 펼치기"
-              style={{ bottom: `calc(${SNAP.peek * 100}% + 12px)` }}
-              className="absolute left-1/2 z-10 flex h-11 w-11 -translate-x-1/2 items-center
-                         justify-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-black/10
+              className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-10 flex h-12
+                         w-12 -translate-x-1/2 items-center justify-center rounded-full bg-white
+                         text-slate-700 shadow-lg ring-1 ring-black/10
                          transition active:scale-95 hover:bg-slate-50 lg:hidden"
             >
               <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden="true" fill="currentColor">
