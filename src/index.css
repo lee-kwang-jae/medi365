@@ -55,6 +55,16 @@
   #root {
     height: 100%;
   }
+  /*
+   * 가로로는 절대 밀리지 않게 한다.
+   * 세로 스크롤은 그대로 둬야 하므로 overflow-x 만 건드린다. hidden 대신 clip 을 쓰는 것은,
+   * hidden 이 자식의 position:sticky/fixed 기준을 바꿔 헤더나 시트가 엉뚱하게 굳어버리기
+   * 때문이다. clip 은 잘라내기만 한다.
+   */
+  html,
+  body {
+    overflow-x: clip;
+  }
   body {
     @apply bg-slate-100 text-slate-900 antialiased;
     font-family: 'NanumSquare Neo', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
@@ -230,3 +240,27 @@
   @apply rounded-full bg-slate-300;
 }
 
+/*
+ * iOS 사파리는 글자가 16px 보다 작은 입력창을 누르면 화면을 **자동으로 확대**한다.
+ * 확대된 상태에서는 페이지가 화면보다 넓어져 가로로 밀리고, 손을 떼도 원래 배율로
+ * 돌아오지 않는다. '가로가 커서 화면이 움직인다' 의 정체가 이것이다.
+ *
+ * maximum-scale=1 로 확대 자체를 막는 방법이 흔히 쓰이지만, 저시력 사용자가 손으로
+ * 확대하는 것까지 막아버리므로 쓰지 않는다. 글자를 16px 로 올리면 확대할 이유가 없어진다.
+ *
+ * 선택자에 [type] 을 붙여 두는 이유가 있다. 입력창 크기는 컴포넌트가 text-[15px] 같은
+ * 유틸리티 클래스로 정하는데, 맨 뒤에 와도 그냥 `input` 은 클래스보다 명시도가 낮아 밀린다.
+ * `input[type='search']` 는 클래스와 같은 무게에 요소 하나가 더 붙어 이긴다.
+ *
+ * 마우스가 주 입력인 데스크톱에는 적용하지 않는다. 거기서는 15px 이 더 맞다.
+ */
+@media (pointer: coarse) {
+  input[type='search'],
+  input[type='text'],
+  input[type='number'],
+  input[type='tel'],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
