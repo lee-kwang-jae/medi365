@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { formatDistance } from '../lib/geo.js';
 import { formatHoursLabel } from '../lib/time.js';
-import { kakaoLinkProps, kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
+import { kakaoLinkProps, kakaoLinks, openInKakaoMap, openKakaoRoute } from '../lib/kakao.js';
 
 // 카카오맵으로 나가는 링크의 target. 모바일에서 새 탭으로 열면 뒤로가기로 앱에
 // 돌아올 수 없어진다 (kakaoLinkProps 주석 참고).
@@ -34,8 +34,7 @@ export function PlaceDetailBody({ item, onClose, inSheet = false }) {
               타이포그래피는 네이버 지도 장소 패널의 비율을 따른다.
               제목은 본문의 약 1.33배(20/15)에 자간을 좁혀 덩어리로 읽히게 하고,
               행간은 1.3 으로 붙인다. 색과 배경은 이 앱의 것을 그대로 쓴다.
-            */}
-            {/*
+
               영업 상태는 이름 바로 옆에 둔다 — 여기서 가장 먼저 알아야 할 것이
               '이 곳이 지금 문을 열었는가' 이기 때문이다.
               flex-wrap 이라 이름이 길면 상태만 아랫줄로 내려가고 잘리지 않는다.
@@ -123,6 +122,9 @@ export function PlaceDetailBody({ item, onClose, inSheet = false }) {
         <a
           href={kakaoLinks.to(item.name, item.lat, item.lng)}
           {...linkProps}
+          onClick={(e) => {
+            if (openKakaoRoute(item)) e.preventDefault();
+          }}
           className="btn-primary h-11 flex-1 text-sm"
         >
           🧭 길찾기

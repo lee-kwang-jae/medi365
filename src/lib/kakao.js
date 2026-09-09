@@ -229,6 +229,68 @@ export function kakaoLinkProps() {
   return opensInNewTab() ? { target: '_blank', rel: 'noopener noreferrer' } : {};
 }
 
+/* ──────────────────────────────────────────────────────────────
+ * 카카오맵 **앱** 으로 내보내되, 이 페이지는 떠나지 않는다
+ *
+ * map.kakao.com 으로 이동시키면 그 페이지가 앱에 화면을 넘긴다. 그 순간 사용자는
+ * 브라우저를 통째로 떠나므로, 앱 안에서 medi365 로 돌아올 길이 없다. 뒤로가기는
+ * 앱이 아니라 크롬 안에서만 통하는 이야기다.
+ *
+ * 앱 스킴으로 직접 부르면 **브라우저 탭은 medi365 인 채로 남는다.** 앱을 닫거나
+ * 앱 전환으로 크롬에 돌아오면 보던 화면이 그대로 있다. 복원할 것도 없다.
+ *
+ * 앱이 없을 때:
+ *   · 안드로이드 — intent:// 의 browser_fallback_url 을 크롬이 알아서 연다
+ *   · 그 외(iOS) — 스킴 호출 뒤에도 화면이 그대로면 앱이 없는 것으로 보고
+ *                  잠시 뒤 웹 주소로 보낸다. 화면이 가려졌으면(앱이 떴으면) 취소한다
+ * ────────────────────────────────────────────────────────────── */
+
+const KAKAO_APP_PACKAGE = 'net.daum.android.map';
+/** 앱이 뜨지 않았다고 판단하기까지 기다리는 시간 */
+const APP_LAUNCH_WAIT_MS = 1500;
+
+const isAndroid = () => /android/i.test(navigator.userAgent || '');
+
+/**
+ * 앱 스킴 경로. 카카오맵 앱이 받는 형식이다.
+ *  · search — 좌표 근처에서 이름으로 찾는다. 장소 카드가 바로 뜬다.
+ *  · route  — 출발지(sp)를 주지 않으면 앱이 **사용자의 현재 위치**를 쓴다.
+ *             우리가 아는 것은 검색 기준점이지 사용자가 선 자리가 아니므로,
+ *             넘기지 않는 편이 정확하다.
+ */
+export const appPath = {
+  view: (name, lat, lng) => `search?q=${encodeURIComponent(name)}&p=${lat},${lng}`,
+  route: (lat, lng) => `route?ep=${lat},${lng}&by=CAR`,
+};
+
+/**
+ * 카카오맵 앱을 띄운다. 실패해도 사용자가 빈손이 되지 않게 웹 주소로 흘려보낸다.
+ * @returns {boolean} 처리했으면 true (호출부가 preventDefault 한다)
+ */
+function launchKakaoApp(path, webFallbackUrl) {
+  if (isAndroid()) {
+    // 크롬이 앱을 띄우거나, 없으면 fallback 주소를 대신 연다. 우리가 잴 것이 없다.
+    window.location.href =
+      `intent://${path}#Intent;scheme=kakaomap;package=${KAKAO_APP_PACKAGE};` +
+      `S.browser_fallback_url=${encodeURIComponent(webFallbackUrl)};end`;
+    return true;
+  }
+
+  const timer = setTimeout(() => {
+    window.location.href = webFallbackUrl;
+  }, APP_LAUNCH_WAIT_MS);
+
+  // 앱이 떴으면 이 문서는 가려진다. 그때 웹으로 보내면 돌아왔을 때 엉뚱한 곳에 서 있다.
+  const cancel = () => {
+    if (document.visibilityState === 'hidden') clearTimeout(timer);
+  };
+  document.addEventListener('visibilitychange', cancel, { once: true });
+  window.addEventListener('pagehide', () => clearTimeout(timer), { once: true });
+
+  window.location.href = `kakaomap://${path}`;
+  return true;
+}
+
 /**
  * 카카오맵에서 이 장소를 연다.
  *
@@ -245,13 +307,20 @@ export function kakaoLinkProps() {
  */
 export function openInKakaoMap(item) {
   /*
-   * 같은 탭으로 내보내는 환경(모바일)에서는 아무것도 하지 않고 앵커에 맡긴다.
-   * findPlaceUrl 은 시간 상한이 없어서, 콜백이 오지 않으면 그대로 매달린다.
-   * 새 탭 경로에서는 이미 열린 빈 탭이 보이기라도 하지만, 같은 탭에서 preventDefault 까지
-   * 해두고 매달리면 버튼이 그냥 먹통이 된다. 정확한 장소 페이지는 부가 기능일 뿐이므로
-   * 검색 링크로 나가는 편이 낫다.
+   * 모바일은 앱을 직접 띄운다. 이 페이지는 그대로 남으므로 앱에서 나오면
+   * 보던 목록이 그대로 있다 (launchKakaoApp 주석 참고).
+   *
+   * 여기서 findPlaceUrl 로 정확한 장소 페이지를 찾지 않는 것은 의도적이다.
+   * 시간 상한이 없어 콜백이 오지 않으면 그대로 매달리는데, preventDefault 까지
+   * 해둔 채 매달리면 버튼이 먹통이 된다. 앱의 search 는 좌표 근처에서 이름으로
+   * 찾으므로 사실상 같은 장소에 닿는다.
    */
-  if (!opensInNewTab()) return false;
+  if (!opensInNewTab()) {
+    return launchKakaoApp(
+      appPath.view(item.name, item.lat, item.lng),
+      kakaoLinks.map(item.name, item.lat, item.lng),
+    );
+  }
 
   const win = window.open('about:blank', '_blank');
   if (!win) return false;
@@ -270,6 +339,20 @@ export function openInKakaoMap(item) {
       win.location.href = fallback;
     });
   return true;
+}
+
+/**
+ * 길찾기. 모바일에서는 앱을 띄우고 이 페이지는 남긴다.
+ * 데스크톱은 앵커의 기본 동작(새 탭)에 맡긴다.
+ *
+ * @returns {boolean} 처리했으면 true (호출부가 preventDefault 한다)
+ */
+export function openKakaoRoute(item) {
+  if (opensInNewTab()) return false;
+  return launchKakaoApp(
+    appPath.route(item.lat, item.lng),
+    kakaoLinks.to(item.name, item.lat, item.lng),
+  );
 }
 
 /* ──────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { formatDistance } from '../lib/geo.js';
 import { formatHoursLabel } from '../lib/time.js';
-import { kakaoLinkProps, kakaoLinks, openInKakaoMap } from '../lib/kakao.js';
+import { kakaoLinkProps, kakaoLinks, openInKakaoMap, openKakaoRoute } from '../lib/kakao.js';
 
 // 카카오맵으로 나가는 링크의 target. 모바일에서 새 탭으로 열면 뒤로가기로 앱에
 // 돌아올 수 없어진다 (kakaoLinkProps 주석 참고).
@@ -128,7 +128,10 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
           <a
             href={kakaoLinks.to(item.name, item.lat, item.lng)}
             {...linkProps}
-            onClick={stop}
+            onClick={(e) => {
+              stop(e);
+              if (openKakaoRoute(item)) e.preventDefault();
+            }}
             className="btn-primary h-10 flex-1 text-xs sm:h-auto"
           >
             🧭 길찾기
