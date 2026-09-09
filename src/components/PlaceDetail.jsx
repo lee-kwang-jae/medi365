@@ -35,19 +35,29 @@ export function PlaceDetailBody({ item, onClose, inSheet = false }) {
               제목은 본문의 약 1.33배(20/15)에 자간을 좁혀 덩어리로 읽히게 하고,
               행간은 1.3 으로 붙인다. 색과 배경은 이 앱의 것을 그대로 쓴다.
             */}
-            <h2 className="break-words text-[20px] font-extrabold leading-[1.3] tracking-[-0.02em]
-                           text-slate-900">
-              {item.name}
-            </h2>
-            <div className="mt-1 flex flex-wrap items-center gap-1">
-              {item.division && (
-                <span className="chip bg-slate-100 text-slate-600">{item.division}</span>
-              )}
+            {/*
+              영업 상태는 이름 바로 옆에 둔다 — 여기서 가장 먼저 알아야 할 것이
+              '이 곳이 지금 문을 열었는가' 이기 때문이다.
+              flex-wrap 이라 이름이 길면 상태만 아랫줄로 내려가고 잘리지 않는다.
+            */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h2 className="min-w-0 break-words text-[20px] font-extrabold leading-[1.3]
+                             tracking-[-0.02em] text-slate-900">
+                {item.name}
+              </h2>
               <StatusChip item={item} />
-              {item.holidayEmergency && (
-                <span className="chip bg-violet-100 text-violet-700">🏮 명절 비상진료</span>
-              )}
             </div>
+            {/* 종별·명절 배지는 둘 다 없을 수 있다. 빈 줄이 남지 않게 조건부로 그린다 */}
+            {(item.division || item.holidayEmergency) && (
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {item.division && (
+                  <span className="chip bg-slate-100 text-slate-600">{item.division}</span>
+                )}
+                {item.holidayEmergency && (
+                  <span className="chip bg-violet-100 text-violet-700">🏮 명절 비상진료</span>
+                )}
+              </div>
+            )}
           </div>
           <button
             type="button"

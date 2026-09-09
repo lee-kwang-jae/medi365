@@ -42,30 +42,33 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            {/*
+              상세와 마찬가지로 영업 상태를 이름 바로 옆에 둔다 (PlaceDetail 주석 참고).
+              제목 비율도 상세와 같다 — 본문의 약 1.33배(17/13), 행간 1.3, 자간 -0.02em.
+              절대 크기만 한 단계 작게 두어 목록이 상세보다 앞서 읽히지 않게 한다.
+            */}
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
               <span className="text-xs font-bold text-slate-400">{index + 1}</span>
-              {/*
-                상세(PlaceDetail)와 같은 비율을 쓴다 — 제목은 본문의 약 1.33배(17/13),
-                행간 1.3, 자간 -0.02em. 절대 크기는 상세보다 한 단계 작게 두어
-                목록이 상세보다 앞서 읽히지 않게 한다.
-              */}
               <h3 className="min-w-0 break-words text-[17px] font-bold leading-[1.3]
                              tracking-[-0.02em] text-slate-900">
                 {item.name}
               </h3>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-1">
-              {item.division && (
-                <span className="chip bg-slate-100 text-slate-600">{item.division}</span>
-              )}
               <StatusChip item={item} />
-              {item.holidayEmergency && (
-                <span className="chip bg-violet-100 text-violet-700">🏮 명절 비상진료</span>
-              )}
-              {item.emergency && (
-                <span className="chip bg-rose-100 text-rose-700">{item.emergency}</span>
-              )}
             </div>
+            {/* 나머지 배지는 모두 없을 수 있다. 빈 줄이 남지 않게 조건부로 그린다 */}
+            {(item.division || item.holidayEmergency || item.emergency) && (
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {item.division && (
+                  <span className="chip bg-slate-100 text-slate-600">{item.division}</span>
+                )}
+                {item.holidayEmergency && (
+                  <span className="chip bg-violet-100 text-violet-700">🏮 명절 비상진료</span>
+                )}
+                {item.emergency && (
+                  <span className="chip bg-rose-100 text-rose-700">{item.emergency}</span>
+                )}
+              </div>
+            )}
           </div>
           <span className="shrink-0 rounded-lg bg-brand-50 px-2 py-1 text-xs font-bold text-brand-700">
             {formatDistance(item.distanceKm)}
