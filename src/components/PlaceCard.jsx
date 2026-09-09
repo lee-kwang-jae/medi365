@@ -44,7 +44,15 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-slate-400">{index + 1}</span>
-              <h3 className="min-w-0 break-words text-[15px] font-bold text-slate-900">{item.name}</h3>
+              {/*
+                상세(PlaceDetail)와 같은 비율을 쓴다 — 제목은 본문의 약 1.33배(17/13),
+                행간 1.3, 자간 -0.02em. 절대 크기는 상세보다 한 단계 작게 두어
+                목록이 상세보다 앞서 읽히지 않게 한다.
+              */}
+              <h3 className="min-w-0 break-words text-[17px] font-bold leading-[1.3]
+                             tracking-[-0.02em] text-slate-900">
+                {item.name}
+              </h3>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1">
               {item.division && (
@@ -64,7 +72,9 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
           </span>
         </div>
 
-        <dl className="mt-2.5 space-y-1 text-[13px] text-slate-600">
+        {/* 행간 1.5 는 이미 그러했지만, 상속에 기대지 않도록 명시한다 */}
+        <dl className="mt-2.5 space-y-1 text-[13px] leading-[1.5] tracking-[-0.01em]
+                       text-slate-600">
           <div className="flex gap-1.5">
             <dt aria-hidden="true">📍</dt>
             <dd className="min-w-0 flex-1 break-words">{item.address || '주소 정보 없음'}</dd>

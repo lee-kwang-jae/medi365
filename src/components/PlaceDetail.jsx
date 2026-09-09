@@ -30,7 +30,15 @@ export function PlaceDetailBody({ item, onClose, inSheet = false }) {
       <div className="sticky top-0 z-10 bg-white/95 px-4 pb-2 pt-3 backdrop-blur">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="break-words text-base font-extrabold text-slate-900">{item.name}</h2>
+            {/*
+              타이포그래피는 네이버 지도 장소 패널의 비율을 따른다.
+              제목은 본문의 약 1.33배(20/15)에 자간을 좁혀 덩어리로 읽히게 하고,
+              행간은 1.3 으로 붙인다. 색과 배경은 이 앱의 것을 그대로 쓴다.
+            */}
+            <h2 className="break-words text-[20px] font-extrabold leading-[1.3] tracking-[-0.02em]
+                           text-slate-900">
+              {item.name}
+            </h2>
             <div className="mt-1 flex flex-wrap items-center gap-1">
               {item.division && (
                 <span className="chip bg-slate-100 text-slate-600">{item.division}</span>
@@ -53,7 +61,14 @@ export function PlaceDetailBody({ item, onClose, inSheet = false }) {
         </div>
       </div>
 
-      <dl className="space-y-2.5 px-4 pb-4 pt-1 text-sm text-slate-700">
+      {/*
+        정보 줄도 네이버 지도의 리듬을 따른다 — 15px · 행간 1.5(22.5px).
+        거기서는 아이콘 없는 한 덩어리 텍스트라 줄 간격이 곧 행간(약 22.7px)이지만,
+        여기는 줄마다 아이콘이 있고 주소가 두 줄로 넘어가므로 4px 만 띄운다.
+        완전히 붙이면 주소의 둘째 줄과 다음 항목이 구분되지 않는다.
+      */}
+      <dl className="space-y-1 px-4 pb-4 pt-1 text-[15px] leading-[1.5] tracking-[-0.01em]
+                     text-slate-700">
         <div className="flex gap-2">
           <dt aria-hidden="true">📍</dt>
           <dd className="min-w-0 flex-1 break-words">{item.address || '주소 정보 없음'}</dd>
