@@ -34,6 +34,7 @@ export default function BottomSheet({
   children,
 }) {
   const sheetRef = useRef(null);
+  const handleRef = useRef(null);
   const dragRef = useRef(null);
 
   const parentHeight = useCallback(
@@ -80,11 +81,23 @@ export default function BottomSheet({
   const onPointerDown = (e) => {
     const el = sheetRef.current;
     if (!enabled || !el) return;
-    // 캡처는 손가락이 시트 밖으로 나가도 move 를 계속 받기 위한 것일 뿐이다.
-    // 실패해도 드래그 자체는 되어야 하므로 여기서 예외가 새어나가면 안 된다 —
-    // 새어나가면 아래 dragRef 할당이 건너뛰어져 시트가 아예 움직이지 않는다.
+    /*
+     * 캡처는 손가락이 손잡이 밖으로 나가도 move 를 계속 받기 위한 것일 뿐이다.
+     *
+     * **반드시 핸들러가 달린 손잡이에 건다.** 시트(부모)에 걸면 이후의 pointermove·
+     * pointerup 이 명세대로 *캡처한 요소* 를 target 으로 잡는다. 손잡이는 시트의
+     * 자식이라 그 전파 경로에서 빠지고, 손잡이에 달아둔 React 핸들러가 한 번도
+     * 호출되지 않는다. 시트가 손가락을 전혀 따라오지 않던 원인이 이것이었다.
+     *
+     * 합성 이벤트로 시험하면 setPointerCapture 가 던져서(활성 포인터가 아니므로)
+     * 아래 catch 로 빠지는 바람에 멀쩡히 동작하는 것처럼 보인다. 반드시 실제
+     * 포인터로 확인할 것.
+     *
+     * 실패해도 드래그 자체는 되어야 하므로 여기서 예외가 새어나가면 안 된다 —
+     * 새어나가면 아래 dragRef 할당이 건너뛰어져 시트가 아예 움직이지 않는다.
+     */
     try {
-      el.setPointerCapture(e.pointerId);
+      (handleRef.current ?? e.currentTarget).setPointerCapture(e.pointerId);
     } catch {
       /* 캡처 없이 진행 */
     }
@@ -109,7 +122,8 @@ export default function BottomSheet({
     if (!drag || !el) return;
     dragRef.current = null;
     try {
-      el.releasePointerCapture(e.pointerId);
+      // 건 곳에서 푼다 — 시트가 아니라 손잡이다 (onPointerDown 의 주석 참고)
+      (handleRef.current ?? e.currentTarget).releasePointerCapture(e.pointerId);
     } catch {
       /* 애초에 캡처하지 못했을 수 있다 */
     }
@@ -136,6 +150,7 @@ export default function BottomSheet({
         가로채 시트가 따라오지 않는다.
       */}
       <div
+        ref={handleRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
