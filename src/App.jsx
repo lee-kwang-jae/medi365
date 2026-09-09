@@ -295,6 +295,28 @@ export default function App() {
   }, []);
 
   /**
+   * 지도 배경(마커가 아닌 곳)을 눌렀을 때 — **한 번에 하나씩만 되돌린다.**
+   *
+   *   선택된 곳이 있으면 → 선택 해제까지만. 시트는 그대로 둔다.
+   *   아무것도 선택돼 있지 않으면 → 시트를 닫아 지도만 남긴다.
+   *
+   * 한 번의 탭으로 선택 해제와 시트 닫기를 함께 하면, 마커를 보다가 지도를 살짝
+   * 건드렸을 뿐인데 목록까지 사라져 놀란다. 지도를 보려는 의도가 분명해진
+   * 두 번째 탭에서만 닫는다. 카카오맵·네이버지도도 이 방식이다.
+   *
+   * 닫힌 뒤 목록으로 돌아오는 길은 지도 하단 중앙의 목록 버튼뿐이다. 지도를 다시
+   * 눌러 여는 토글로 만들지 않은 것은, 지도를 조작하려던 탭이 목록을 도로 띄워
+   * 지도를 볼 수 없게 만들기 때문이다.
+   */
+  const handleMapTap = useCallback(() => {
+    if (selectedId || detailId) {
+      handleSelect(null);
+      return;
+    }
+    if (!isDesktop) setSnap('closed');
+  }, [selectedId, detailId, isDesktop, handleSelect]);
+
+  /**
    * 시트를 스크롤하다 가운데로 들어온 장소.
    * 강조와 지도 이동만 하고 **상세는 열지 않는다** — 훑어보는 중에 상세가 튀어나오면
    * 스크롤이 막힌다. 상세는 명시적으로 눌렀을 때만 연다.
@@ -442,6 +464,7 @@ export default function App() {
               items={shownItems}
               selectedId={selectedId}
               onSelect={handleSelect}
+              onBackgroundTap={handleMapTap}
               accent={activeTab.accent}
               kind={tab}
               bottomInsetRatio={isDesktop ? 0 : SNAP[snap]}

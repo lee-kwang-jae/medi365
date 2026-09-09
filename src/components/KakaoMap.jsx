@@ -73,6 +73,9 @@ function centerContent(label) {
  * @param bottomInsetRatio 지도 아래쪽이 바텀시트에 가려지는 비율(0~1).
  *   지도 div 자체는 화면 전체를 차지하므로, 이 값을 빼지 않으면 panTo·setBounds 가
  *   '보이지 않는 중앙'을 기준으로 잡아 선택한 마커가 시트 뒤로 숨는다.
+ * @param onBackgroundTap 마커가 아닌 지도 배경을 눌렀을 때. 무엇을 할지는 여기서
+ *   정하지 않는다 — 선택 해제인지 시트를 닫는 것인지는 화면 상태를 가진 App 이 안다.
+ *   (마커 클릭은 stopPropagation 으로 막혀 있어 여기까지 오지 않는다)
  */
 export default function KakaoMap({
   center,
@@ -80,6 +83,7 @@ export default function KakaoMap({
   items,
   selectedId,
   onSelect,
+  onBackgroundTap,
   accent,
   kind,
   bottomInsetRatio = 0,
@@ -95,6 +99,9 @@ export default function KakaoMap({
   const viewCenterRef = useRef(null);
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
+  // 지도 생성 효과는 한 번만 도므로, 배경 탭 핸들러도 ref 로 최신값을 읽는다
+  const backgroundTapRef = useRef(onBackgroundTap);
+  backgroundTapRef.current = onBackgroundTap;
   // 마커 클릭 핸들러가 최신 선택 상태를 보려면 ref 가 필요하다(재클릭 = 해제)
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
@@ -145,8 +152,18 @@ export default function KakaoMap({
     mapRef.current = map;
     viewCenterRef.current = map.getCenter();
 
-    // 지도 배경 클릭 시 선택 해제 (마커 클릭은 stopPropagation 으로 여기까지 오지 않는다)
-    kakao.maps.event.addListener(map, 'click', () => selectRef.current?.(null));
+    /*
+     * 지도 배경 클릭. 마커 클릭은 stopPropagation 으로 여기까지 오지 않는다.
+     *
+     * 카카오 SDK 는 드래그(지도 이동)로 끝난 제스처에는 click 을 쏘지 않으므로,
+     * 지도를 밀어서 옮긴 뒤에 시트가 닫히는 일은 없다. 이 전제가 깨지면
+     * 지도를 조금만 움직여도 목록이 사라지므로, SDK 를 올릴 때 함께 확인할 것.
+     */
+    kakao.maps.event.addListener(map, 'click', () =>
+      backgroundTapRef.current
+        ? backgroundTapRef.current()
+        : selectRef.current?.(null),
+    );
 
     circleRef.current = new kakao.maps.Circle({
       center: map.getCenter(),
