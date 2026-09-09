@@ -40,7 +40,11 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
             : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-300',
         ].join(' ')}
       >
-        <div className="flex items-start justify-between gap-3">
+        {/*
+          거리 배지가 오른쪽 위에 따로 있었지만, 주소 앞으로 옮겼으므로 지웠다.
+          같은 숫자를 한 카드에 두 번 보여줄 이유가 없다.
+        */}
+        <div className="flex items-start gap-3">
           <div className="min-w-0">
             {/*
               상세와 마찬가지로 영업 상태를 이름 바로 옆에 둔다 (PlaceDetail 주석 참고).
@@ -70,24 +74,24 @@ export default function PlaceCard({ item, index, selected, onSelect }) {
               </div>
             )}
           </div>
-          <span className="shrink-0 rounded-lg bg-brand-50 px-2 py-1 text-xs font-bold text-brand-700">
-            {formatDistance(item.distanceKm)}
-          </span>
         </div>
 
         {/* 행간 1.5 는 이미 그러했지만, 상속에 기대지 않도록 명시한다 */}
         <dl className="mt-2.5 space-y-1 text-[13px] leading-[1.5] tracking-[-0.01em]
                        text-slate-600">
+          {/* 주소 앞의 핀 자리에 거리를 넣는다 (PlaceDetail 주석 참고) */}
           <div className="flex gap-1.5">
-            <dt aria-hidden="true">📍</dt>
+            <dt className="w-[2.75rem] shrink-0 font-bold text-brand-700">
+              {formatDistance(item.distanceKm)}
+            </dt>
             <dd className="min-w-0 flex-1 break-words">{item.address || '주소 정보 없음'}</dd>
           </div>
           <div className="flex gap-1.5">
-            <dt aria-hidden="true">🕒</dt>
+            <dt aria-hidden="true" className="w-[2.75rem] shrink-0">🕒</dt>
             <dd>{formatHoursLabel(item.hours)}</dd>
           </div>
           <div className="flex gap-1.5">
-            <dt aria-hidden="true">☎</dt>
+            <dt aria-hidden="true" className="w-[2.75rem] shrink-0">☎</dt>
             <dd>
               {item.tel ? (
                 <a

@@ -78,21 +78,25 @@ export function PlaceDetailBody({ item, onClose, inSheet = false }) {
       */}
       <dl className="space-y-1 px-4 pb-4 pt-1 text-[15px] leading-[1.5] tracking-[-0.01em]
                      text-slate-700">
+        {/*
+          주소 앞의 핀(📍) 자리에 거리를 넣는다. 핀은 '이 줄은 위치'라는 것 말고는
+          알려주는 것이 없었지만, 거리는 여기서 실제로 쓰이는 값이다.
+          아래 줄의 아이콘과 같은 폭을 줘서 값들이 한 열로 맞는다.
+        */}
         <div className="flex gap-2">
-          <dt aria-hidden="true">📍</dt>
+          <dt className="w-[3.25rem] shrink-0 font-bold text-brand-700">
+            {formatDistance(item.distanceKm)}
+          </dt>
           <dd className="min-w-0 flex-1 break-words">{item.address || '주소 정보 없음'}</dd>
         </div>
         <div className="flex gap-2">
-          <dt aria-hidden="true">🕒</dt>
+          <dt aria-hidden="true" className="w-[3.25rem] shrink-0">🕒</dt>
           <dd>{formatHoursLabel(item.hours)}</dd>
         </div>
-        <div className="flex gap-2">
-          <dt aria-hidden="true">🧭</dt>
-          <dd>검색 위치에서 {formatDistance(item.distanceKm)}</dd>
-        </div>
+        {/* 거리 줄은 없앴다 — 주소 앞으로 옮겼으므로 같은 값이 두 번 나온다 */}
         {item.tel && (
           <div className="flex gap-2">
-            <dt aria-hidden="true">☎</dt>
+            <dt aria-hidden="true" className="w-[3.25rem] shrink-0">☎</dt>
             <dd>{item.tel}</dd>
           </div>
         )}
