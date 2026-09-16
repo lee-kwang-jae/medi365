@@ -9,8 +9,8 @@
     },
     "hospital": {
       "cells": 942,
-      "count": 73946,
-      "lastAdded": 73946,
+      "count": 73948,
+      "lastAdded": 73948,
       "region": "전국"
     }
   },
@@ -1635,8 +1635,8 @@
       "385_1284"
     ]
   },
-  "generatedAt": "2026-09-15T15:14:26.849Z",
+  "generatedAt": "2026-09-16T12:18:44.662Z",
   "complete": true,
   "regions": [],
-  "pediatric": 14117
+  "pediatric": 14118
 }
