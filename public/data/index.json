@@ -3,14 +3,14 @@
   "kinds": {
     "pharmacy": {
       "cells": 673,
-      "count": 25277,
-      "lastAdded": 25277,
+      "count": 25272,
+      "lastAdded": 25272,
       "region": "전국"
     },
     "hospital": {
       "cells": 939,
-      "count": 73973,
-      "lastAdded": 73973,
+      "count": 73964,
+      "lastAdded": 73964,
       "region": "전국"
     }
   },
@@ -1632,8 +1632,8 @@
       "385_1284"
     ]
   },
-  "generatedAt": "2026-09-30T18:17:25.586Z",
+  "generatedAt": "2026-10-01T18:19:05.756Z",
   "complete": true,
   "regions": [],
-  "pediatric": 14104
+  "pediatric": 14100
 }
