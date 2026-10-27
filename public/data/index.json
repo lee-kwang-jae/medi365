@@ -2,15 +2,15 @@
   "grid": 0.1,
   "kinds": {
     "pharmacy": {
-      "cells": 671,
-      "count": 25239,
-      "lastAdded": 25239,
+      "cells": 672,
+      "count": 25238,
+      "lastAdded": 25238,
       "region": "전국"
     },
     "hospital": {
       "cells": 940,
-      "count": 74110,
-      "lastAdded": 74110,
+      "count": 74114,
+      "lastAdded": 74114,
       "region": "전국"
     }
   },
@@ -239,6 +239,7 @@
       "355_1282",
       "355_1284",
       "355_1287",
+      "355_1288",
       "355_1290",
       "355_1291",
       "355_1292",
@@ -1631,8 +1632,8 @@
       "385_1284"
     ]
   },
-  "generatedAt": "2026-10-26T12:28:21.085Z",
+  "generatedAt": "2026-10-27T08:46:00.203Z",
   "complete": true,
   "regions": [],
-  "pediatric": 14142
+  "pediatric": 14143
 }
